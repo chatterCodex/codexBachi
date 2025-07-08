@@ -11,7 +11,7 @@ from random import random
 import plotly.graph_objects as go
 import plotly.express as px
 from ipywidgets.widgets import Button, Dropdown, Textarea, Layout
-from torch import prod
+from torch import layout, prod
 
 from src.main import geometry_operations, plotting_3d
 
@@ -512,7 +512,7 @@ def interactive_cr_selection(
         margin=dict(r=30, l=30, t=30, b=30),
     )
 
-    # and for the current layout overview
+    # and for the layout overview
     layout_columns = [
         "Total Layout Costs (€)",
         "Setup and Takedown, Prod. Costs (€)",
@@ -524,34 +524,58 @@ def interactive_cr_selection(
         "Cost per m3 (€/m)",
         "Volume per Meter (m3/m)",
     ]
-    layout_overview_df = pd.DataFrame(columns=layout_columns)
+
+    all_layouts = []
+    for i, row in results_df.iterrows():
+        layout_data = update_layout_overview(row["selected_lines"], forest_area_3, model_list)
+        all_layouts.append([
+            i + 1,
+            layout_data["Total Cable Corridor Costs (€)"],
+            layout_data["Setup and Takedown, Prod. Costs (€)"],
+            layout_data["Ecol. Penalty"],
+            layout_data["Ergon. Penalty"],
+            layout_data["Corresponding Cable Corridor"],
+            layout_data["Max lateral Yarding Distance (m)"],
+            layout_data["Average lateral Yarding Distance (m)"],
+            layout_data["Cost per m3 (€)"],
+            layout_data["Volume per Meter (m3)"],
+        ])
+
+    layout_overview_df = pd.DataFrame(
+        all_layouts,
+        columns=["Index"] + layout_columns,
+    )
+
     layout_overview_table_figure = go.FigureWidget(
         [
             go.Table(
-                header=dict(values=layout_columns),
-                cells=dict(values=[layout_overview_df]),
+                header=dict(values=["Index"] + layout_columns),
+                cells=dict(values=[layout_overview_df[col] for col in layout_overview_df.columns]),
             )
         ]
     )
     layout_overview_table_figure.update_layout(
         title="Current Cable Corridor Layout Overview",
-        height=250,
+        height=300,
         margin=dict(r=30, l=30, t=30, b=30),
     )
 
-    # as well as the layout comparison table
-    layout_comparison_df = pd.DataFrame(columns=layout_columns)
-    layout_comparison_table_figure = go.FigureWidget(
-        [
-            go.Table(
-                header=dict(values=layout_columns),
-                cells=dict(values=[]),
-            )
-        ]
-    )
-    layout_comparison_table_figure.update_layout(
-        title="Cable Corridor Layout Comparison"
-    )
+    selected_layout_row = None
+
+    def highlight_layout_row(idx):
+        nonlocal selected_layout_row
+        n_rows = len(layout_overview_df)
+        n_cols = len(layout_overview_df.columns)
+        fill = [["white"] * n_rows for _ in range(n_cols)]
+        line_color = [["lightgrey"] * n_rows for _ in range(n_cols)]
+        if idx is not None:
+            for c in range(n_cols):
+                line_color[c][idx] = "red"
+        layout_overview_table_figure.data[0].cells.fill.color = fill
+        layout_overview_table_figure.data[0].cells.line.color = line_color
+        selected_layout_row = idx
+
+    highlight_layout_row(None)
 
     # anchor table
     anchor_columns = [
@@ -586,6 +610,27 @@ def interactive_cr_selection(
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
+
+    def layout_table_click(trace, points, selector):
+        if points.point_inds:
+            index = points.point_inds[0]
+            highlight_layout_row(index)
+            corresponding_indices = layout_overview_df.iloc[index]["Selected Cable Corridors"]
+            update_interactive_based_on_indices(
+                current_cable_roads_table_figure,
+                current_cable_roads_table,
+                layout_overview_table_figure,
+                anchor_table_figure,
+                road_anchor_table_figure,
+                corresponding_indices,
+                interactive_layout,
+                forest_area_3,
+                model_list,
+                transparent_line,
+                solid_line,
+            )
+    
+    layout_overview_table_figure.data[0].on_click(layout_table_click)
 
     def plot_pareto_frontier(
         results_df,
@@ -648,6 +693,7 @@ def interactive_cr_selection(
                 transparent_line,
                 solid_line,
             )
+            highlight_layout_row(index)
 
         pareto_frontier.data[0].on_click(selection_fn)
         return pareto_frontier
@@ -798,96 +844,6 @@ def interactive_cr_selection(
     def move_right_callback(button):
         set_current_cr(left=False)
 
-    def add_to_comparison_callback(button):
-        """
-        Function to add the current layout to the comparison table
-        """
-        nonlocal layout_comparison_df
-        nonlocal buttons
-
-        # append the current data from the layout overview table to the comparison table
-        layout_comparison_df.loc[len(layout_comparison_df) + 1] = (
-            layout_overview_table_figure.data[0].cells.values
-        )
-
-        # and update the figure accordingly
-        layout_comparison_table_figure.data[0].cells.values = (
-            layout_comparison_df.values.T
-        )
-
-        recreate_dropdown_menu()
-
-    def reset_comparison_table_callback(button):
-        """
-        Function to reset the comparison table by emptying the figure data
-        """
-        layout_comparison_table_figure.data[0].cells.values = []
-        # reset the dataframe
-        nonlocal layout_comparison_df
-        layout_comparison_df = pd.DataFrame(columns=[layout_columns])
-
-        # and reset the dropdown menu
-        recreate_dropdown_menu()
-
-    def create_dropdown_menu():
-        """
-        Function to recreate the dropdown menu based on the current indices
-        """
-        nonlocal layout_comparison_df
-
-        # recreate the dropdown menu with the current indices
-        dropdown_menu = Dropdown(
-            options=[""],
-            description="Load custom Layout",
-        )
-
-        return dropdown_menu
-
-    def recreate_dropdown_menu():
-        """
-        Function to recreate the dropdown menu based on the current indices
-        """
-        nonlocal layout_comparison_df
-        nonlocal buttons
-
-        # recreate the dropdown menu with the current indices and one empty selection
-        buttons[5].options = [""] + [
-            str(index) for index in range(len(layout_comparison_df))
-        ]
-
-    def dropdown_menu_callback(change):
-        """
-        Function to load a custom layout from the dropdown menu
-        """
-        if change["type"] == "change" and change["name"] == "value":
-            if change["new"] == "":
-                return
-
-            nonlocal layout_comparison_df
-            nonlocal buttons
-
-            # get the index of the selected layout
-            selected_index = int(change.new)
-
-            # get the corresponding list of activated cable rows from the dataframe
-            corresponding_indices = layout_comparison_df.iloc[selected_index][
-                "Selected Cable Corridors"
-            ][0]
-
-            update_interactive_based_on_indices(
-                current_cable_roads_table_figure,
-                current_cable_roads_table,
-                layout_overview_table_figure,
-                anchor_table_figure,
-                road_anchor_table_figure,
-                corresponding_indices,
-                interactive_layout,
-                forest_area_3,
-                model_list,
-                transparent_line,
-                solid_line,
-            )
-
     def view_in_3d_callback(button, scatterplot=layout_3d_scatter_plot):
         """
         Function to view the current layout in 3d. This updates the layout_3d_scatter_plot with the new 3d scatterplot based on the current indices
@@ -918,9 +874,6 @@ def interactive_cr_selection(
 
         # reset the current indices
         current_indices = []
-
-        # reset the dropdown menu
-        recreate_dropdown_menu()
 
         # reset the layout
         interactive_layout.update_traces(line=transparent_line)
@@ -970,9 +923,6 @@ def interactive_cr_selection(
         reset_all__CRs_button = Button(description="Reset all CRs")
         view_in_3d_button = Button(description="View in 3D")
 
-        add_layout_to_comparison_button = Button(description="Add layout to comparison")
-        reset_comparison_button = Button(description="Reset comparison")
-        dropdown_menu = create_dropdown_menu()
         explanation_widget = create_explanation_widget()
         explanation_dropdown_menu = explanation_dropdown()
 
@@ -980,9 +930,6 @@ def interactive_cr_selection(
         move_left_button.on_click(move_left_callback)
         move_right_button.on_click(move_right_callback)
         reset_all__CRs_button.on_click(reset_button_callback)
-        add_layout_to_comparison_button.on_click(add_to_comparison_callback)
-        reset_comparison_button.on_click(reset_comparison_table_callback)
-        dropdown_menu.observe(dropdown_menu_callback)
         view_in_3d_button.on_click(
             partial(view_in_3d_callback, scatterplot=layout_3d_scatter_plot)
         )
@@ -1009,9 +956,6 @@ def interactive_cr_selection(
             move_left_button,
             move_right_button,
             reset_all__CRs_button,
-            add_layout_to_comparison_button,
-            reset_comparison_button,
-            dropdown_menu,
             view_in_3d_button,
             explanation_widget,
             explanation_dropdown_menu,
@@ -1031,11 +975,7 @@ def interactive_cr_selection(
         buttons[1],
         buttons[2],
         buttons[3],
+        layout_3d_scatter_plot,
         buttons[4],
         buttons[5],
-        buttons[6],
-        layout_comparison_table_figure,
-        layout_3d_scatter_plot,
-        buttons[7],
-        buttons[8],
     )
