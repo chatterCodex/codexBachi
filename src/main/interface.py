@@ -16,7 +16,7 @@ from torch import prod
 from src.main import geometry_operations, plotting_3d
 
 
-def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None):
+def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None, display_names=None):
     # create a trace for the trees
     xs, ys = zip(
         *[
@@ -34,21 +34,27 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
     )
 
     if selected_indices is None:
-        iterator = forest_area_3.line_gdf.iterrows()
-    else:
-        iterator = forest_area_3.line_gdf.loc[selected_indices].iterrows()
+        selected_indices = list(forest_area_3.line_gdf.index)
+
+    if display_names is None:
+        display_names = selected_indices
+    
+    df = forest_area_3.line_gdf.loc[selected_indices]
 
     # Create traces for each line
-    individual_lines = [
-        go.Scatter(
-            x=np.asarray(row.geometry.xy[0]) + random(),
-            y=np.asarray(row.geometry.xy[1]) + random(),
-            mode="lines",
-            line=transparent_line,
-            name=str(id),
+    individual_lines = []
+
+    for display, (idx, row) in zip(display_names, df.iterrows()):
+        individual_lines.append(
+            go.Scatter(
+                x=np.asarray(row.geometry.xy[0]) + random(),
+                y=np.asarray(row.geometry.xy[1]) + random(),
+                mode="lines",
+                line=transparent_line,
+                name=str(display),
+                meta=int(idx),
+            )
         )
-        for id, row in iterator
-    ]
 
     return trees, individual_lines
 
@@ -76,7 +82,7 @@ def update_interactive_based_on_indices(
     for active_row in current_indices:
         # then, set the traces at the indices of the selected pareto option to black
         interactive_layout.update_traces(
-            line=solid_line, selector={"name": str(active_row)}
+            line=solid_line, selector={"meta": active_row}
         )
 
     # and update the list of current indices to the new ones as well as the layout
@@ -415,9 +421,10 @@ def update_line_colors_by_indices(current_indices, interactive_layout):
     Function to set the line colors of the interactive layout based on the current indices
     """
     for indice, integer in zip(current_indices, range(len(current_indices))):
-        interactive_layout.data[indice + 2].line.color = px.colors.qualitative.Plotly[
-            integer
-        ]
+        interactive_layout.update_traces(
+            line=dict(color=px.colors.qualitative.Plotly[integer], width=5),
+            selector={"meta": indice},
+        )
 
 
 def interactive_cr_selection(
@@ -451,9 +458,16 @@ def interactive_cr_selection(
         {int(i) for row in results_df["selected_lines"] for i in row}
     )
 
+    display_names = list(range(1, len(indices_to_show) + 1))
+    display_to_real = dict(zip(display_names, indices_to_show))
+    real_to_display = dict(zip(indices_to_show, display_names))
+
     # create traces for the lines and trees
     trees, individual_lines = create_trees_and_lines_traces(
-        forest_area_3, transparent_line, selected_indices=indices_to_show
+        forest_area_3, 
+        transparent_line, 
+        selected_indices=indices_to_show,
+        display_names=display_names,
     )
 
     # create the traces for a contour plot
@@ -691,7 +705,7 @@ def interactive_cr_selection(
                 )
 
                 # and set the selected cr to the name of the trace if it is a new one
-                selected_cr = int(trace.name)
+                selected_cr = display_to_real[int(trace.name)]
 
             # get all active traces  - ie those which are not lightgrey. very heavy-handed expression, but it works
             active_traces = list(
@@ -707,7 +721,7 @@ def interactive_cr_selection(
             )
 
             nonlocal current_indices
-            current_indices = [int(trace.name) for trace in active_traces]
+            current_indices = [display_to_real[int(trace.name)] for trace in active_traces]
 
             # color the traces
             # we set the color of the lines in the current indices in consecutive order by choosing corresponding colors from the colorway
@@ -751,11 +765,11 @@ def interactive_cr_selection(
         # make this trace lightgrey
         interactive_layout.update_traces(
             line=transparent_line,
-            selector={"name": str(selected_cr)},
+            selector={"meta": selected_cr},
         )
 
         # in/decrement the cr
-        selected_cr = selected_cr - 1 if left else selected_cr + 1
+        selected_cr = display_to_real[real_to_display[selected_cr] - 1 if left else real_to_display[selected_cr] + 1]
 
         # and set the selected_cr on the index
         current_indices[index_cr] = selected_cr
@@ -763,7 +777,7 @@ def interactive_cr_selection(
         # update this trace to turn black
         interactive_layout.update_traces(
             line=solid_line,
-            selector={"name": str(selected_cr)},
+            selector={"meta": selected_cr},
         )
 
         update_colors_and_tables(
