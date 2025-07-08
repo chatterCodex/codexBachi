@@ -124,7 +124,7 @@ def line_cost_function(
         + 0.00229 * line_length
         + 0.03 * intermediate_support_height  # not available now?
         + 0.256 * corridor_type
-        - 0.65 * extraction_direction  # 1 for uphill, 0 for downhill
+        - 0.65 * extraction_direction  # 1 for uphill, 0 for downhill <!!!!!!!!!!
         + 0.11 * yarder_size  # 1 for larger yarder, 0 for smaller 35kn
         + 0.491 * extraction_direction * yarder_size
     )

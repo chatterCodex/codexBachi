@@ -16,7 +16,7 @@ from torch import prod
 from src.main import geometry_operations, plotting_3d
 
 
-def create_trees_and_lines_traces(forest_area_3, transparent_line):
+def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None):
     # create a trace for the trees
     xs, ys = zip(
         *[
@@ -33,6 +33,11 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line):
         hoverinfo="none",
     )
 
+    if selected_indices is None:
+        iterator = forest_area_3.line_gdf.iterrows()
+    else:
+        iterator = forest_area_3.line_gdf.loc[selected_indices].iterrows()
+
     # Create traces for each line
     individual_lines = [
         go.Scatter(
@@ -42,7 +47,7 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line):
             line=transparent_line,
             name=str(id),
         )
-        for id, row in forest_area_3.line_gdf.iterrows()
+        for id, row in iterator
     ]
 
     return trees, individual_lines
@@ -442,9 +447,13 @@ def interactive_cr_selection(
     transparent_line = dict(color=color_transparent, width=0.5)
     solid_line = dict(color="black", width=5)
 
+    indices_to_show = sorted(
+        {int(i) for row in results_df["selected_lines"] for i in row}
+    )
+
     # create traces for the lines and trees
     trees, individual_lines = create_trees_and_lines_traces(
-        forest_area_3, transparent_line
+        forest_area_3, transparent_line, selected_indices=indices_to_show
     )
 
     # create the traces for a contour plot
