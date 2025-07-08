@@ -538,7 +538,7 @@ def interactive_cr_selection(
             layout_data["Max lateral Yarding Distance (m)"],
             layout_data["Average lateral Yarding Distance (m)"],
             layout_data["Cost per m3 (€)"],
-            layout_data["Volume per Meter (m3)"],
+            layout_data["Volume per Meter (m3/m)"],
         ])
 
     layout_overview_df = pd.DataFrame(
