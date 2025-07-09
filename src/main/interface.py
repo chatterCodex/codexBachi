@@ -21,7 +21,7 @@ from src.main import geometry_operations, plotting_3d
 def get_zebra_fill(n_rows: int, n_cols: int) -> list:
     """Return alternating row colors for tables."""
     row_colors = [
-        "lightgrey" if i % 2 == 0 else "rgba(139, 255, 129, 0.12)"
+        "lightgrey" if i % 2 == 1 else "rgba(139, 255, 129, 0.12)"
         for i in range(n_rows)
     ]
     return [row_colors for _ in range(n_cols)]
@@ -58,10 +58,10 @@ def style_table(table: go.FigureWidget) -> None:
     )
 
     tbl.cells.update(
-        fill_color = get_zebra_fill(n_rows, n_cols),
-        line_color = [["darkgrey"] * n_rows for _ in range(n_cols)],
-        align = "center",
-        font = dict(color = "black", family = "Arial"),
+        fill_color=get_zebra_fill(n_rows, n_cols),
+        line_color=[["rgba(0, 0, 0, 0)"] * n_rows for _ in range(n_cols)],
+        align="center",
+        font=dict(color = "black", family = "Arial"),
     )
 
 def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None, display_names=None):
@@ -624,6 +624,8 @@ def interactive_cr_selection(
         margin=dict(r=30, l=30, t=30, b=30),
     )
 
+    style_table(current_cable_roads_table_figure)
+
     # and for the layout overview
     layout_columns = [
         "Total Layout Costs (€)",
@@ -677,6 +679,7 @@ def interactive_cr_selection(
         height=300,
         margin=dict(r=30, l=30, t=30, b=30),
     )
+    style_table(layout_overview_table_figure)
 
     selected_layout_row = None
 
@@ -730,6 +733,7 @@ def interactive_cr_selection(
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
+    style_table(anchor_table_figure)
 
     road_anchor_df = pd.DataFrame(columns=anchor_columns)
     road_anchor_table_figure = go.FigureWidget(
@@ -751,6 +755,7 @@ def interactive_cr_selection(
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
+    style_table(road_anchor_table_figure)
 
     def layout_table_click(trace, points, selector):
         if points.point_inds:
@@ -798,7 +803,10 @@ def interactive_cr_selection(
                     x=results_df["ecological_distances_RNI"],
                     y=results_df[ergonomics_column],
                     z=results_df["cost_objective_RNI"],
-                    mode="markers",
+                    text=[str(i + 1) for i in range(len(results_df))],
+                    mode="markers+text",
+                    textposition="middle center",
+                    textfont=dict(color="black", size=12),
                     name="solutions",
                 ),
                 go.Scatter3d(
@@ -809,7 +817,7 @@ def interactive_cr_selection(
                     marker=dict(color="red", size=8, line=dict(color="black", width=2)),
                     text=[],
                     textposition="middle center",
-                    textfont=dict(color="black"),
+                    textfont=dict(color="black", size=16),
                     name="selected",
                 ),
             ]
