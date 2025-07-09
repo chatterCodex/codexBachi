@@ -1,7 +1,9 @@
+from ast import alias
 from calendar import c
 from functools import partial
 import re
 from turtle import up, update
+from click import style
 from matplotlib.axis import XAxis, YAxis
 import pandas as pd
 import numpy as np
@@ -15,6 +17,52 @@ from torch import layout, prod
 
 from src.main import geometry_operations, plotting_3d
 
+
+def get_zebra_fill(n_rows: int, n_cols: int) -> list:
+    """Return alternating row colors for tables."""
+    row_colors = [
+        "lightgrey" if i % 2 == 0 else "rgba(139, 255, 129, 0.12)"
+        for i in range(n_rows)
+    ]
+    return [row_colors for _ in range(n_cols)]
+
+def style_table(table: go.FigureWidget) -> None:
+    """Apply consistent styling and zebra stripes to a plotly table."""
+
+    if not table.data:
+        return
+
+    tbl = table.data[0]
+
+    if not hasattr(tbl, "cells") or not hasattr(tbl, "header"):
+        return
+
+    values = getattr(tbl.cells, "values", None)
+
+    if not values or len(values) == 0 or len(values[0]) == 0:
+        tbl.header.update(
+            fill_color="lightgrey",
+            line_color="darkgrey",
+            align="center",
+            font=dict(color="black", size=12, family="Arial"),
+        )
+        return
+    
+    n_rows = len(values[0])
+    n_cols = len(values)
+    tbl.header.update(
+        fill_color = "lightgrey",
+        line_color = "darkgrey",
+        align = "center",
+        font = dict(color = "black", size = 12, family = "Arial"),
+    )
+
+    tbl.cells.update(
+        fill_color = get_zebra_fill(n_rows, n_cols),
+        line_color = [["darkgrey"] * n_rows for _ in range(n_cols)],
+        align = "center",
+        font = dict(color = "black", family = "Arial"),
+    )
 
 def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None, display_names=None):
     # create a trace for the trees
@@ -199,6 +247,11 @@ def update_tables(
         updated_layout_costs["Road Anchor Angle of Attack"].astype(int),
     ]
 
+    style_table(current_cable_roads_table_figure)
+    style_table(layout_overview_table_figure)
+    style_table(anchor_table_figure)
+    style_table(road_anchor_table_figure)
+
 def update_tables_no_layout(
     current_cable_roads_table_figure,
     current_cable_roads_table,
@@ -249,6 +302,10 @@ def update_tables_no_layout(
         updated_layout_costs["Corresponding Cable Corridor"],
         updated_layout_costs["Road Anchor Angle of Attack"].astype(int),
     ]
+
+    style_table(current_cable_roads_table_figure)
+    style_table(anchor_table_figure)
+    style_table(road_anchor_table_figure)
 
 
 def create_contour_traces(forest_area_3):
@@ -551,9 +608,13 @@ def interactive_cr_selection(
                         "Supports Amount",
                         "Supports Height (m)",
                         "Average Tree Height (m)",
-                    ]
+                    ],
+                    fill_color="lightgrey",
+                    align = "center",
+                    line_color = "darkgrey",
+                    font = dict(color = "black", size = 12, family = "Arial")
                 ),
-                cells=dict(values=[]),
+                cells=dict(values=[], align = "center"),
             )
         ]
     )
@@ -600,8 +661,14 @@ def interactive_cr_selection(
     layout_overview_table_figure = go.FigureWidget(
         [
             go.Table(
-                header=dict(values=["Index"] + layout_columns),
-                cells=dict(values=[layout_overview_df[col] for col in layout_overview_df.columns]),
+                header=dict(
+                    values=["Index"] + layout_columns,
+                    fill_color="lightgrey",
+                    align="center",
+                    line_color="darkgrey",
+                    font=dict(color="black", size=12, family="Arial")
+                ),
+                cells=dict(values=[layout_overview_df[col] for col in layout_overview_df.columns], align="center"),
             )
         ]
     )
@@ -619,11 +686,9 @@ def interactive_cr_selection(
         nonlocal selected_layout_row
         n_rows = len(layout_overview_df)
         n_cols = len(layout_overview_df.columns)
-        fill = [["white"] * n_rows for _ in range(n_cols)]
-        line_color = [["lightgrey"] * n_rows for _ in range(n_cols)]
-        
-        layout_overview_table_figure.data[0].cells.fill.color = fill
-        layout_overview_table_figure.data[0].cells.line.color = line_color
+
+        layout_overview_table_figure.data[0].cells.fill.color = get_zebra_fill(n_rows, n_cols)
+        layout_overview_table_figure.data[0].cells.line.color = [["darkgrey"] * n_rows for _ in range(n_cols)]
 
         # remove any previous highlight rectangle
         layout_overview_table_figure.layout.shapes = []
@@ -661,7 +726,18 @@ def interactive_cr_selection(
     ]
     anchor_df = pd.DataFrame(columns=anchor_columns)
     anchor_table_figure = go.FigureWidget(
-        [go.Table(header=dict(values=anchor_columns), cells=dict(values=[anchor_df]))]
+        [
+            go.Table(
+                header=dict(
+                    values=anchor_columns,
+                    fill_color="lightgrey",
+                    align="center",
+                    line_color="darkgrey",
+                    font=dict(color="black", size=12, family="Arial")
+                ),
+                cells=dict(values=[anchor_df.values], align="center")
+            )
+        ]
     )
     anchor_table_figure.update_layout(
         title="Anchor Information",
@@ -673,7 +749,14 @@ def interactive_cr_selection(
     road_anchor_table_figure = go.FigureWidget(
         [
             go.Table(
-                header=dict(values=anchor_columns), cells=dict(values=[road_anchor_df])
+                header=dict(
+                    values=anchor_columns,
+                    fill_color="lightgrey",
+                    align="center",
+                    line_color="darkgrey",
+                    font=dict(color="black", size=12, family="Arial"),
+                ),
+                cells=dict(values=[road_anchor_df], align="center"),
             )
         ]
     )
