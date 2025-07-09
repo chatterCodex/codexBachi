@@ -798,16 +798,30 @@ def interactive_cr_selection(
             else "ergonomics_distances_RNI"
         )
 
+        x_vals = results_df["ecological_distances_RNI"].to_numpy(dtype=float)
+        y_vals = results_df[ergonomics_column].to_numpy(dtype=float)
+        z_vals = results_df["cost_objective_RNI"].to_numpy(dtype=float)
+
+        def normalize(arr: np.ndarray) -> np.ndarray:
+            arr_min, arr_max = arr.min(), arr.max()
+            return np.zeros_like(arr) if arr_max == arr_min else (arr - arr_min) / (arr_max - arr_min)
+        
+        r = (normalize(x_vals) * 255).astype(int)
+        g = (normalize(y_vals) * 255).astype(int)
+        b = (normalize(z_vals) * 255).astype(int)
+        colors = [f"rgb({int(c_r*0.7 + 255*0.3)}, {int(c_g*0.7 + 255*0.3)}, {int(c_b*0.7 + 255*0.3)})" for c_r, c_g, c_b in zip(r, g, b)]
+
         pareto_frontier = go.FigureWidget(
             data = [
                 go.Scatter3d(
-                    x=results_df["ecological_distances_RNI"],
-                    y=results_df[ergonomics_column],
-                    z=results_df["cost_objective_RNI"],
+                    x=x_vals,
+                    y=y_vals,
+                    z=z_vals,
                     text=[str(i + 1) for i in range(len(results_df))],
                     mode="markers+text",
                     textposition="middle center",
                     textfont=dict(color="black", size=12),
+                    marker=dict(color=colors, size=8, line=dict(color="black", width=3)),
                     name="solutions",
                 ),
                 go.Scatter3d(
@@ -815,10 +829,10 @@ def interactive_cr_selection(
                     y=[],
                     z=[],
                     mode="markers+text",
-                    marker=dict(color="red", size=8, line=dict(color="black", width=2)),
+                    marker=dict(color="red", size=8, line=dict(color="black", width=4)),
                     text=[],
                     textposition="middle center",
-                    textfont=dict(color="black", size=16),
+                    textfont=dict(color="black", size=12),
                     name="selected",
                 ),
             ]
