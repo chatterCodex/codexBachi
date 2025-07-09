@@ -1,7 +1,7 @@
 from calendar import c
 from functools import partial
 import re
-from turtle import up
+from turtle import up, update
 from matplotlib.axis import XAxis, YAxis
 import pandas as pd
 import numpy as np
@@ -200,14 +200,14 @@ def update_tables(
     ]
 
 def update_tables_no_layout(
-        current_cable_roads_table_figure,
-        current_cable_roads_table,
-        anchor_table_figure,
-        road_anchor_table_figure,
-        current_indices,
-        interactive_layout,
-        forest_area_3,
-        model_list,
+    current_cable_roads_table_figure,
+    current_cable_roads_table,
+    anchor_table_figure,
+    road_anchor_table_figure,
+    current_indices,
+    interactive_layout,
+    forest_area_3,
+    model_list,
 ):
     """Update tables without altering the overview table."""
 
@@ -515,8 +515,8 @@ def interactive_cr_selection(
 
     # create traces for the lines and trees
     trees, individual_lines = create_trees_and_lines_traces(
-        forest_area_3, 
-        transparent_line, 
+        forest_area_3,
+        transparent_line,
         selected_indices=indices_to_show,
         display_names=display_names,
     )
@@ -614,16 +614,37 @@ def interactive_cr_selection(
     selected_layout_row = None
 
     def highlight_layout_row(idx):
+        """Highlight the selected row in the layout overview table."""
+
         nonlocal selected_layout_row
         n_rows = len(layout_overview_df)
         n_cols = len(layout_overview_df.columns)
         fill = [["white"] * n_rows for _ in range(n_cols)]
         line_color = [["lightgrey"] * n_rows for _ in range(n_cols)]
-        if idx is not None:
-            for c in range(n_cols):
-                line_color[c][idx] = "red"
+        
         layout_overview_table_figure.data[0].cells.fill.color = fill
         layout_overview_table_figure.data[0].cells.line.color = line_color
+
+        # remove any previous highlight rectangle
+        layout_overview_table_figure.layout.shapes = []
+
+        if idx is not None:
+            row_height = 1 / n_rows
+            y0 = 1 - (idx + 1) * row_height
+            y1 = 1 - idx * row_height
+
+            layout_overview_table_figure.add_shape(
+                type="rect",
+                xref="paper",
+                yref="paper",
+                x0=0,
+                y0=y0,
+                x1=1,
+                y1=y1,
+                fillcolor="rgba(0, 0, 0, 0)",
+                line=dict(color="red", width=2),
+            )
+
         selected_layout_row = idx
 
     highlight_layout_row(None)
@@ -666,6 +687,7 @@ def interactive_cr_selection(
         if points.point_inds:
             index = points.point_inds[0]
             highlight_layout_row(index)
+            update_selected_marker(index)
             corresponding_indices = layout_overview_df.iloc[index]["Selected Cable Corridors"]
             update_interactive_based_on_indices(
                 current_cable_roads_table_figure,
@@ -696,12 +718,23 @@ def interactive_cr_selection(
         model_list,
     ):
         pareto_frontier = go.FigureWidget(
-            go.Scatter3d(
-                x=results_df["ecological_distances_RNI"],
-                y=results_df["ergonomics_distances_RNI"],
-                z=results_df["cost_objective_RNI"],
-                mode="markers",
-            )
+            data = [
+                go.Scatter3d(
+                    x=results_df["ecological_distances_RNI"],
+                    y=results_df["ergonomics_discances_RNI"],
+                    z=results_df["cost_objective_RNI"],
+                    mode="markers",
+                    name="solutions",
+                ),
+                go.Scatter3d(
+                    x=[],
+                    y=[],
+                    z=[],
+                    mode="markers",
+                    marker=dict(color="black", size=6),
+                    name="selected",
+                ),
+            ]
         )
 
         pareto_frontier.update_layout(
@@ -745,6 +778,7 @@ def interactive_cr_selection(
                 solid_line,
             )
             highlight_layout_row(index)
+            update_selected_marker(index)
 
         pareto_frontier.data[0].on_click(selection_fn)
         return pareto_frontier
@@ -762,6 +796,19 @@ def interactive_cr_selection(
         solid_line,
         model_list,
     )
+
+    def update_selected_marker(index):
+        """Draw a black marker over the selected pareto point."""
+        if index is None:
+            pareto_frontier.data[1].x = []
+            pareto_frontier.data[1].y = [] 
+            pareto_frontier.data[1].z = []
+        else:
+            pareto_frontier.data[1].x = [pareto_frontier.data[0].x[index]]
+            pareto_frontier.data[1].y = [pareto_frontier.data[0].y[index]]
+            pareto_frontier.data[1].z = [pareto_frontier.data[0].z[index]]
+
+    update_selected_marker(None)
 
     # 3d scatter plot for viewing the layout in 3d
     layout_3d_scatter_plot = go.FigureWidget(go.Scatter3d())
