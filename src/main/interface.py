@@ -717,11 +717,17 @@ def interactive_cr_selection(
         solid_line,
         model_list,
     ):
+        ergonomics_column = (
+            "ergonomics_discances_RNI" 
+            if "ergonomics_discances_RNI" in results_df.columns
+            else "ergonomics_distances_RNI"
+        )
+
         pareto_frontier = go.FigureWidget(
             data = [
                 go.Scatter3d(
                     x=results_df["ecological_distances_RNI"],
-                    y=results_df["ergonomics_discances_RNI"],
+                    y=results_df[ergonomics_column],
                     z=results_df["cost_objective_RNI"],
                     mode="markers",
                     name="solutions",
