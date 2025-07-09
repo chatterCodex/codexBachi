@@ -13,6 +13,7 @@ from random import random
 import plotly.graph_objects as go
 import plotly.express as px
 from ipywidgets.widgets import Button, Dropdown, Textarea, Layout
+from pygments import highlight
 from torch import layout, prod
 
 from src.main import geometry_operations, plotting_3d
@@ -1054,6 +1055,7 @@ def interactive_cr_selection(
         """
         nonlocal current_indices
         nonlocal selected_cr
+        nonlocal layout_overview_df
 
         # reset the selected cr to none
         selected_cr = None
@@ -1069,14 +1071,17 @@ def interactive_cr_selection(
             [],
             [],
             [],
+            [],
+            [],
+            [],
         ]
 
         layout_overview_table_figure.data[0].cells.values = [
-            [],
-            [],
-            [],
-            [],
+            layout_overview_df[col] for col in layout_overview_df.columns
         ]
+
+        highlight_layout_row(None)
+        update_selected_marker(None)
 
     def create_explanation_widget():
         return Textarea(
@@ -1106,7 +1111,11 @@ def interactive_cr_selection(
         """
         move_left_button = Button(description="<-")
         move_right_button = Button(description="->")
-        reset_all__CRs_button = Button(description="Reset all CRs")
+        reset_all__CRs_button = Button(
+            description="Reset all CRs",
+            button_style="danger",
+            layout=Layout(width="150px", margin="10px 0 0 auto")
+        )
         view_in_3d_button = Button(description="View in 3D")
 
         explanation_widget = create_explanation_widget()
