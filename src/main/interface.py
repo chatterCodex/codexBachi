@@ -42,7 +42,7 @@ def style_table(table: go.FigureWidget) -> None:
     if not values or len(values) == 0 or len(values[0]) == 0:
         tbl.header.update(
             fill_color="lightgrey",
-            line_color="darkgrey",
+            line_color="rgba(0, 0, 0, 0)",
             align="center",
             font=dict(color="black", size=12, family="Arial"),
         )
@@ -51,10 +51,10 @@ def style_table(table: go.FigureWidget) -> None:
     n_rows = len(values[0])
     n_cols = len(values)
     tbl.header.update(
-        fill_color = "lightgrey",
-        line_color = "darkgrey",
-        align = "center",
-        font = dict(color = "black", size = 12, family = "Arial"),
+        fill_color="lightgrey",
+        line_color="rgba(0, 0, 0, 0)",
+        align="center",
+        font=dict(color = "black", family = "Arial"),
     )
 
     tbl.cells.update(
@@ -687,28 +687,14 @@ def interactive_cr_selection(
         n_rows = len(layout_overview_df)
         n_cols = len(layout_overview_df.columns)
 
-        layout_overview_table_figure.data[0].cells.fill.color = get_zebra_fill(n_rows, n_cols)
-        layout_overview_table_figure.data[0].cells.line.color = [["darkgrey"] * n_rows for _ in range(n_cols)]
-
-        # remove any previous highlight rectangle
-        layout_overview_table_figure.layout.shapes = []
-
+        fill_colors = get_zebra_fill(n_rows, n_cols)
         if idx is not None:
-            row_height = 1 / n_rows
-            y0 = 1 - (idx + 1) * row_height
-            y1 = 1 - idx * row_height
+            for c in range(n_cols):
+                fill_colors[c][idx] = "rgba(255, 0, 0, 0.3)"
 
-            layout_overview_table_figure.add_shape(
-                type="rect",
-                xref="paper",
-                yref="paper",
-                x0=0,
-                y0=y0,
-                x1=1,
-                y1=y1,
-                fillcolor="rgba(0, 0, 0, 0)",
-                line=dict(color="red", width=2),
-            )
+        layout_overview_table_figure.data[0].cells.fill.color = fill_colors
+        layout_overview_table_figure.data[0].cells.line.color = [["rgba(0, 0, 0, 0)"] * n_rows for _ in range(n_cols)]
+        layout_overview_table_figure.layout.shapes = []
 
         selected_layout_row = idx
 
@@ -819,8 +805,11 @@ def interactive_cr_selection(
                     x=[],
                     y=[],
                     z=[],
-                    mode="markers",
-                    marker=dict(color="black", size=6),
+                    mode="markers+text",
+                    marker=dict(color="red", size=8, line=dict(color="black", width=2)),
+                    text=[],
+                    textposition="middle center",
+                    textfont=dict(color="black"),
                     name="selected",
                 ),
             ]
@@ -890,12 +879,14 @@ def interactive_cr_selection(
         """Draw a black marker over the selected pareto point."""
         if index is None:
             pareto_frontier.data[1].x = []
-            pareto_frontier.data[1].y = [] 
+            pareto_frontier.data[1].y = []
             pareto_frontier.data[1].z = []
+            pareto_frontier.data[1].text = []
         else:
             pareto_frontier.data[1].x = [pareto_frontier.data[0].x[index]]
             pareto_frontier.data[1].y = [pareto_frontier.data[0].y[index]]
             pareto_frontier.data[1].z = [pareto_frontier.data[0].z[index]]
+            pareto_frontier.data[1].text = [str(index + 1)]
 
     update_selected_marker(None)
 
