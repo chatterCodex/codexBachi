@@ -86,10 +86,9 @@ def update_interactive_based_on_indices(
         )
 
     # and update the list of current indices to the new ones as well as the layout
-    update_colors_and_tables(
+    update_tables_no_layout(
         current_cable_roads_table_figure,
         current_cable_roads_table,
-        layout_overview_table_figure,
         anchor_table_figure,
         road_anchor_table_figure,
         current_indices,
@@ -97,6 +96,7 @@ def update_interactive_based_on_indices(
         forest_area_3,
         model_list,
     )
+    update_line_colors_by_indices(current_indices, interactive_layout)
 
 
 def update_colors_and_tables(
@@ -180,6 +180,57 @@ def update_tables(
     ]
 
     # update the anchor table
+    anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Anchor BHD"],
+        updated_layout_costs["Anchor height"],
+        updated_layout_costs["Anchor max holding force"],
+        updated_layout_costs["Anchor x coordinate"],
+        updated_layout_costs["Anchor y coordinate"],
+        updated_layout_costs["Corresponding Cable Corridor"],
+    ]
+
+    road_anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Road Anchor BHD"],
+        updated_layout_costs["Road Anchor height"],
+        updated_layout_costs["Road Anchor max holding force"],
+        updated_layout_costs["Road Anchor x coordinate"],
+        updated_layout_costs["Road Anchor y coordinate"],
+        updated_layout_costs["Corresponding Cable Corridor"],
+        updated_layout_costs["Road Anchor Angle of Attack"].astype(int),
+    ]
+
+def update_tables_no_layout(
+        current_cable_roads_table_figure,
+        current_cable_roads_table,
+        anchor_table_figure,
+        road_anchor_table_figure,
+        current_indices,
+        interactive_layout,
+        forest_area_3,
+        model_list,
+):
+    """Update tables without altering the overview table."""
+
+    updated_layout_costs = update_layout_overview(current_indices, forest_area_3, model_list)
+
+    line_costs, line_lengths, _ = current_cable_roads_table.loc[
+        current_cable_roads_table.index.isin(current_indices)
+    ].values.T
+
+    current_cable_roads_table_figure.data[0].cells.values = [
+        line_costs.astype(int),
+        line_lengths.astype(int),
+        updated_layout_costs["Wood Volume per Cable Corridor (m3)"],
+        updated_layout_costs["Supports Amount"],
+        updated_layout_costs["Supports Height (m)"],
+        updated_layout_costs["Average Tree Height (m)"],
+    ]
+
+    interactive_layout.data[0].marker.color = [
+        px.colors.qualitative.Plotly[i]
+        for i in updated_layout_costs["Tree to Cable Corridor Assignment"]
+    ]
+
     anchor_table_figure.data[0].cells.values = [
         updated_layout_costs["Anchor BHD"],
         updated_layout_costs["Anchor height"],
