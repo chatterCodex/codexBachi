@@ -22,7 +22,7 @@ from src.main import geometry_operations, plotting_3d
 def get_zebra_fill(n_rows: int, n_cols: int) -> list:
     """Return alternating row colors for tables."""
     row_colors = [
-        "lightgrey" if i % 2 == 1 else "rgba(139, 255, 129, 0.12)"
+        "rgb(217, 217, 217)" if i % 2 == 1 else "rgba(139, 255, 129, 0.12)"
         for i in range(n_rows)
     ]
     return [row_colors for _ in range(n_cols)]
@@ -42,7 +42,7 @@ def style_table(table: go.FigureWidget) -> None:
 
     if not values or len(values) == 0 or len(values[0]) == 0:
         tbl.header.update(
-            fill_color="lightgrey",
+            fill_color="rgb(217, 217, 217)",
             line_color="rgba(0, 0, 0, 0)",
             align="center",
             font=dict(color="black", size=12, family="Arial"),
@@ -52,7 +52,7 @@ def style_table(table: go.FigureWidget) -> None:
     n_rows = len(values[0])
     n_cols = len(values)
     tbl.header.update(
-        fill_color="lightgrey",
+        fill_color="rgb(217, 217, 217)",
         line_color="rgba(0, 0, 0, 0)",
         align="center",
         font=dict(color = "black", family = "Arial"),
@@ -79,7 +79,8 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
         mode="markers",
         marker=dict(color="green"),
         name="Trees",
-        hoverinfo="none",
+        customdata=forest_area_3.harvesteable_trees_gdf["BHD"],
+        hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
     )
 
     if selected_indices is None:
@@ -145,7 +146,7 @@ def update_interactive_based_on_indices(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout)
+    update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
 
 
 def update_colors_and_tables(
@@ -173,7 +174,7 @@ def update_colors_and_tables(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout)
+    update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
 
 
 def update_tables(
@@ -525,20 +526,36 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     }
 
 
-def update_line_colors_by_indices(current_indices, interactive_layout):
-    """
-    Function to set the line colors of the interactive layout based on the current indices
-    """
-    for indice, integer in zip(current_indices, range(len(current_indices))):
+def update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3=None, model_list=None):
+    """Set line colors and hover information for the currently active cable roads."""
+
+    volumes = None
+    if forest_area_3 is not None and model_list is not None:
+        layout_data = update_layout_overview(current_indices, forest_area_3, model_list)
+        volumes = layout_data["Wood Volume per Cable Corridor (m3)"]
+
+    for integer, indice in enumerate(current_indices):
+        hover = None
+        if volumes is not None and indice in forest_area_3.line_gdf.index:
+            length = int(forest_area_3.line_gdf.loc[indice, "line_length"])
+            vol = volumes[integer] if integer < len(volumes) else volumes[0]
+            hover = f"Cable Length: {length} m<br>Wood Volume: {vol} m3"
+
         interactive_layout.update_traces(
             line=dict(color=px.colors.qualitative.Plotly[integer], width=5),
+            hovertemplate=hover,
             selector={"meta": indice},
         )
 
+    # remove hover info from inactive lines
+    active_set = set(current_indices)
+    for trace in interactive_layout.data[2:]:
+        if trace.meta not in active_set:
+            trace.hovertemplate = None
+
 
 def interactive_cr_selection(
-    forest_area_3, model_list, optimization_result_list, results_df
-):
+    forest_area_3, model_list, optimization_result_list, results_df):
     """
     Create an interactive cable road layout visualization.
 
@@ -610,10 +627,10 @@ def interactive_cr_selection(
                         "Supports Height (m)",
                         "Average Tree Height (m)",
                     ],
-                    fill_color="lightgrey",
-                    align = "center",
-                    line_color = "darkgrey",
-                    font = dict(color = "black", size = 12, family = "Arial")
+                    fill_color="rgb(217, 217, 217)",
+                    align="center",
+                    line_color="darkgrey",
+                    font = dict(color="black", size = 12, family = "Arial")
                 ),
                 cells=dict(values=[], align = "center"),
             )
@@ -666,7 +683,7 @@ def interactive_cr_selection(
             go.Table(
                 header=dict(
                     values=["Index"] + layout_columns,
-                    fill_color="lightgrey",
+                    fill_color="rgb(217, 217, 217)",
                     align="center",
                     line_color="darkgrey",
                     font=dict(color="black", size=12, family="Arial")
@@ -720,7 +737,7 @@ def interactive_cr_selection(
             go.Table(
                 header=dict(
                     values=anchor_columns,
-                    fill_color="lightgrey",
+                    fill_color="rgb(217, 217, 217)",
                     align="center",
                     line_color="darkgrey",
                     font=dict(color="black", size=12, family="Arial")
@@ -742,7 +759,7 @@ def interactive_cr_selection(
             go.Table(
                 header=dict(
                     values=anchor_columns,
-                    fill_color="lightgrey",
+                    fill_color="rgb(217, 217, 217)",
                     align="center",
                     line_color="darkgrey",
                     font=dict(color="black", size=12, family="Arial"),
@@ -791,9 +808,10 @@ def interactive_cr_selection(
         transparent_line,
         solid_line,
         model_list,
+        gamma: float = 0.12,
     ):
         ergonomics_column = (
-            "ergonomics_discances_RNI" 
+            "ergonomics_discances_RNI"
             if "ergonomics_discances_RNI" in results_df.columns
             else "ergonomics_distances_RNI"
         )
@@ -802,13 +820,13 @@ def interactive_cr_selection(
         y_vals = results_df[ergonomics_column].to_numpy(dtype=float)
         z_vals = results_df["cost_objective_RNI"].to_numpy(dtype=float)
 
-        def normalize(arr: np.ndarray) -> np.ndarray:
+        def normalize_and_gamma(arr: np.ndarray) -> np.ndarray:
             arr_min, arr_max = arr.min(), arr.max()
-            return np.zeros_like(arr) if arr_max == arr_min else (arr - arr_min) / (arr_max - arr_min)
+            return np.power(np.zeros_like(arr) if arr_max == arr_min else (arr - arr_min) / (arr_max - arr_min), gamma)
         
-        r = (normalize(x_vals) * 255).astype(int)
-        g = (normalize(y_vals) * 255).astype(int)
-        b = (normalize(z_vals) * 255).astype(int)
+        r = (normalize_and_gamma(x_vals) * 255).astype(int)
+        g = (normalize_and_gamma(y_vals) * 255).astype(int)
+        b = (normalize_and_gamma(z_vals) * 255).astype(int)
         colors = [f"rgb({int(c_r*0.7 + 255*0.3)}, {int(c_g*0.7 + 255*0.3)}, {int(c_b*0.7 + 255*0.3)})" for c_r, c_g, c_b in zip(r, g, b)]
 
         pareto_frontier = go.FigureWidget(
@@ -848,8 +866,11 @@ def interactive_cr_selection(
                 zaxis_title="Cost Optimality",
                 xaxis={"autorange": "reversed"},
             ),
-            scene_camera_eye=dict(x=1.7, y=1.7, z=1),
-            scene_camera_center=dict(x=0, y=0, z=-0.5),
+            scene_camera=dict(
+                eye=dict(x=1.7, y=1.7, z=1),
+                center=dict(x=0, y=0, z=-0.5),
+                projection=dict(type="orthographic"),
+            ),
             margin=dict(r=30, l=30, t=30, b=30),
         )
 
@@ -896,6 +917,7 @@ def interactive_cr_selection(
         transparent_line,
         solid_line,
         model_list,
+        gamma=0.12,
     )
 
     def update_selected_marker(index):
@@ -972,7 +994,7 @@ def interactive_cr_selection(
 
             # color the traces
             # we set the color of the lines in the current indices in consecutive order by choosing corresponding colors from the colorway
-            update_line_colors_by_indices(current_indices, interactive_layout)
+            update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
 
             # update the tables accordingly
             update_tables(
