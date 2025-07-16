@@ -1,6 +1,8 @@
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from pyparsing import col, line
+from shapely.geometry import Point, LineString
 
 import matplotlib.pyplot as plt
 
@@ -9,6 +11,7 @@ from itertools import chain
 from itertools import cycle
 
 import plotly.graph_objects as go
+from sklearn import tree
 from src.main import optimization_compute_quantification, classes_linear_optimization
 from typing import TYPE_CHECKING
 
@@ -44,6 +47,13 @@ def plot_gdf_with_anchors_and_supports(gdfs: list, line_gdf: gpd.GeoDataFrame):
     for keyword in ["tree_anchor_support_trees"]:
         b = pd.concat(line_gdf[keyword].values)
         b.plot(cmap="tab20", ax=ax)
+
+    for _, row in line_gdf.iterrows():
+        anchor_point = Point(row.line_candidates.coords[1])
+        for _, support in row.tree_anchor_support_trees.iterrows():
+            support_point = support.geometry
+            line = LineString([anchor_point, support_point])
+            gpd.GeoSeries([line]).plot(ax=ax, color="grey")
 
     for keyword in ["possible_anchor_triples"]:
         b = line_gdf[keyword]
@@ -96,6 +106,19 @@ def add_geometries_to_fig(
     )
     return fig
 
+def add_line_between_points(
+    point_a: Point, point_b: Point, fig: go.Figure, color: str = "grey"
+):
+    """Add a line between two points to a plotly figure"""
+    fig.add_trace(
+        go.Scatter(
+            x=[point_a.x, point_a.y],
+            y=[point_b.x, point_b.y],
+            mode="lines",
+            line=dict(color=color),
+        )
+    )
+    return fig
 
 def expert_results_extraction(
     fac2cli: list,
@@ -266,6 +289,11 @@ def plot_optimization_layout(
         xs, ys = unwrapped_triples[i][0].xy
         for triple in unwrapped_triples[i]:
             fig = add_geometries_to_fig(triple.coords, fig, marker_color="black")
+
+        # lines from anchor tree to its supporting trees
+        anchor_point = Point(current_line.geometry.coords[1])
+        for _, support in tree_anchor[i].iterrows():
+            fig = add_line_between_points(anchor_point, support.geometry, fig)
 
         # the supports
         xs = [point.x for point in intermediate_supports[i]]

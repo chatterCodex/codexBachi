@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple
 from random import random
+from shapely.geometry import LineString
 
 import plotly.graph_objects as go
 import plotly.express as px
@@ -95,10 +96,22 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
     individual_lines = []
 
     for display, (idx, row) in zip(display_names, df.iterrows()):
+        line = row.geometry
+        # sample multiple points along the line so hovering works anywhere
+        n_points = max(int(line.length // 5) + 2, 20)
+        distances = np.linspace(0, line.length, n_points)
+        x_coords = []
+        y_coords = []
+        jitter = random()
+        for d in distances:
+            pt = line.interpolate(d)
+            x_coords.append(pt.x + jitter)
+            y_coords.append(pt.y + jitter)
+
         individual_lines.append(
             go.Scatter(
-                x=np.asarray(row.geometry.xy[0]) + random(),
-                y=np.asarray(row.geometry.xy[1]) + random(),
+                x=x_coords,
+                y=y_coords,
                 mode="lines",
                 line=transparent_line,
                 name=str(display),
@@ -107,6 +120,60 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
         )
 
     return trees, individual_lines
+
+def create_anchor_traces(forest_area_3, selected_indices=None):
+    """Create scatter traces for anchor trees with hover info."""
+
+    if selected_indices is None:
+        selected_indices = list(forest_area_3.line_gdf.index)
+
+    tail_x = []
+    tail_y = []
+    tail_bhd = []
+    road_x = []
+    road_y = []
+    road_bhd = []
+
+    for idx in selected_indices:
+        row = forest_area_3.line_gdf.loc[idx]
+
+        try:
+            endmast = row.tree_anchor_support_trees.iloc[0]
+        except Exception:
+            endmast = row.tree_anchor_support_trees
+        tail_x.append(round(endmast["x"], 2))
+        tail_y.append(round(endmast["y"], 2))
+        tail_bhd.append(int(endmast["BHD"]))
+
+        try:
+            road_anchor = row.road_anchor_tree_series.sample(n=1)
+        except Exception:
+            road_anchor = row.road_anchor_tree_series.iloc[0]
+        road_x.append(round(float(road_anchor["x"]), 2))
+        road_y.append(round(float(road_anchor["y"]), 2))
+        road_bhd.append(int(road_anchor["BHD"]))
+
+    tail_trace = go.Scatter(
+        x=tail_x,
+        y=tail_y,
+        mode="markers",
+        marker=dict(color="brown", symbol="x", size=10),
+        name="Tail Anchors",
+        customdata=tail_bhd,
+        hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
+    )
+
+    road_trace = go.Scatter(
+        x=road_x,
+        y=road_y,
+        mode="markers",
+        marker=dict(color="purple", symbol="x", size=10),
+        name="Road Anchors",
+        customdata=road_bhd,
+        hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
+    )
+
+    return tail_trace, road_trace
 
 
 def update_interactive_based_on_indices(
@@ -600,7 +667,14 @@ def interactive_cr_selection(
     contour_traces = create_contour_traces(forest_area_3)
 
     # create a figure from all individual scatter lines
-    interactive_layout = go.FigureWidget([trees, contour_traces, *individual_lines])
+    tail_anchors, road_anchors = create_anchor_traces(
+        forest_area_3, selected_indices=indices_to_show
+    )
+
+    # create a figure from all individual scatter lines and anchors
+    interactive_layout = go.FigureWidget(
+        [trees, contour_traces, tail_anchors, road_anchors, *individual_lines]
+    )
     interactive_layout.update_layout(
         title="Cable Corridor Map",
         width=1200,
@@ -872,6 +946,8 @@ def interactive_cr_selection(
                 projection=dict(type="orthographic"),
             ),
             margin=dict(r=30, l=30, t=30, b=30),
+            uniformtext_minsize=12,
+            uniformtext_mode="show",
         )
 
         def selection_fn(trace, points, selector):
