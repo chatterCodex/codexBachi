@@ -251,9 +251,6 @@ def update_interactive_based_on_indices(
     # first set all traces to lightgrey and hide them
     interactive_layout.update_traces(line=transparent_line)
 
-    for trace in interactive_layout.data[2:]:
-        trace.visible = True
-
     # and update the list of current indices to the new ones as well as the layout
     update_tables_no_layout(
         current_cable_roads_table_figure,
@@ -265,7 +262,7 @@ def update_interactive_based_on_indices(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
+    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
 
 
 def update_colors_and_tables(
@@ -294,7 +291,7 @@ def update_colors_and_tables(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
+    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
 
 
 def update_tables(
@@ -647,9 +644,16 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     }
 
 
-def update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3=None, model_list=None):
+def update_line_colors_by_indices(
+        current_indices, 
+        interactive_layout, 
+        color_map, 
+        forest_area_3=None, 
+        model_list=None,
+        hide_unselected=True):
     """Set line colors and hover information for the currently active cable roads."""
 
+    current_indices = list(map(int, current_indices))
     color_transparent = "rgba(0, 0, 0, 0.4)"
 
     volumes = None
@@ -663,18 +667,19 @@ def update_line_colors_by_indices(current_indices, interactive_layout, color_map
         if idx is None:
             continue
         if hasattr(trace, "line"):
-            if getattr(trace.line, "dash", None):
-                trace.line.color = color_transparent
-                trace.line.width = 1
-            else:
-                trace.line.color = color_transparent
-                trace.line.width = 0.5
-
-            trace.visible = True
+            trace.line.color = color_transparent
+            trace.line.width = 1 if getattr(trace.line, "dash", None) else 0.5
             trace.hovertemplate = None
         elif trace.mode.startswith("markers"):
             trace.marker.color = color_transparent
             trace.marker.symbol = "circle"
+        
+        if hide_unselected:
+            if hasattr(trace, "line") and getattr(trace, "showlegend", True):
+                trace.visible = "legendonly"
+            else:
+                trace.visible = False
+        else:
             trace.visible = True
 
     # apply colors to active lines
@@ -693,12 +698,11 @@ def update_line_colors_by_indices(current_indices, interactive_layout, color_map
             if hasattr(trace, "line"):
                 if getattr(trace.line, "dash", None):
                     trace.line.color = color
-                    trace.line.width = 1
-                    trace.visible = True
+                    trace.line.width = 1 
                 else:
                     trace.line.color = color
                     trace.line.width = 5
-                    trace.visible = True
+                trace.visible = True
 
             elif trace.mode.startswith("markers"):
                 trace.marker.color = color
@@ -769,7 +773,7 @@ def interactive_cr_selection(
     interactive_layout = go.FigureWidget(
         [trees, contour_traces, *individual_lines, *tail_anchor_lines, *road_anchor_lines, *tail_anchors, *road_anchors]
     )
-    update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list)
+    update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list, hide_unselected=False)
     interactive_layout.update_layout(
         title="Cable Corridor Map",
         width=1200,
@@ -1155,21 +1159,24 @@ def interactive_cr_selection(
             active_traces = list(
                 interactive_layout.select_traces(
                     selector=lambda x: (
-                        True
-                        if x.line.color
+                        bool(getattr(x, "name", ""))
+                        and x.line.color
                         and x.line.color != color_transparent
                         and x.name != "Contour"
-                        else False
                     )
                 )
             )
 
             nonlocal current_indices
-            current_indices = [display_to_real[int(trace.name)] for trace in active_traces]
+            current_indices = [
+                display_to_real[int(trace.name)] 
+                for trace in active_traces 
+                if str(trace.name).isdigit()
+            ]
 
             # color the traces
             # we set the color of the lines in the current indices in consecutive order by choosing corresponding colors from the colorway
-            update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
+            update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
 
             # update the tables accordingly
             update_tables(
@@ -1276,9 +1283,14 @@ def interactive_cr_selection(
         current_indices = []
 
         # reset the layout
-        interactive_layout.update_traces(line=transparent_line)
-        for trace in interactive_layout.data[2:]:
-            trace.visible = False
+        update_line_colors_by_indices(
+            [],
+            interactive_layout,
+            color_map,
+            forest_area_3,
+            model_list,
+            hide_unselected=False,
+        )
 
         # reset the tables
         current_cable_roads_table_figure.data[0].cells.values = [
