@@ -683,8 +683,9 @@ def update_line_colors_by_indices(
             trace.visible = True
 
     # apply colors to active lines
+    ordered = sorted(current_indices)
     for indice in current_indices:
-        color = color_map.get(indice, px.colors.qualitative.Plotly[0])
+        color = px.colors.qualitative.Plotly[ordered.index(indice) % len(px.colors.qualitative.Plotly)]
         hover = None
         if volumes is not None and indice in forest_area_3.line_gdf.index:
             length = int(forest_area_3.line_gdf.loc[indice, "line_length"])
