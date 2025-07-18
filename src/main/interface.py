@@ -4,11 +4,11 @@ from functools import partial
 import re
 from turtle import up, update
 from click import style
+from matplotlib import legend
 from matplotlib.axis import XAxis, YAxis
 import pandas as pd
 import numpy as np
 from typing import Tuple
-from random import random
 from shapely.geometry import LineString
 
 import plotly.graph_objects as go
@@ -102,11 +102,10 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
         distances = np.linspace(0, line.length, n_points)
         x_coords = []
         y_coords = []
-        jitter = random()
         for d in distances:
             pt = line.interpolate(d)
-            x_coords.append(pt.x + jitter)
-            y_coords.append(pt.y + jitter)
+            x_coords.append(pt.x)
+            y_coords.append(pt.y)
 
         individual_lines.append(
             go.Scatter(
@@ -116,64 +115,119 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
                 line=transparent_line,
                 name=str(display),
                 meta=int(idx),
+                legendgroup=str(display),
             )
         )
 
     return trees, individual_lines
 
-def create_anchor_traces(forest_area_3, selected_indices=None):
-    """Create scatter traces for anchor trees with hover info."""
+def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_display, selected_indices=None):
+    """Create scatter traces and connecting lines for anchor trees."""
 
     if selected_indices is None:
         selected_indices = list(forest_area_3.line_gdf.index)
 
-    tail_x = []
-    tail_y = []
-    tail_bhd = []
-    road_x = []
-    road_y = []
-    road_bhd = []
+    tail_markers = []
+    road_markers = []
+    tail_lines = []
+    road_lines = []
 
     for idx in selected_indices:
         row = forest_area_3.line_gdf.loc[idx]
+
+        line = row.geometry
+        start_pt = line.coords[0]
+        end_pt = line.coords[-1]
 
         try:
             endmast = row.tree_anchor_support_trees.iloc[0]
         except Exception:
             endmast = row.tree_anchor_support_trees
-        tail_x.append(round(endmast["x"], 2))
-        tail_y.append(round(endmast["y"], 2))
-        tail_bhd.append(int(endmast["BHD"]))
 
+        ex = round(endmast["x"], 2)
+        ey = round(endmast["y"], 2)
+        
+        color = color_map[idx]
+        display_idx = real_to_display[idx]
+
+        tail_markers.append(
+            go.Scatter(
+                x=[ex],
+                y=[ey],
+                mode="markers",
+                marker=dict(color=color, symbol="circle", size=10),
+                showlegend=False,
+                name=f"Tail Anchor {display_idx}",
+                customdata=[[int(endmast["BHD"]), idx]],
+                hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
+                meta=int(idx),
+                legendgroup=str(display_idx),
+            )
+        )
+
+        tail_lines.append(
+            go.Scatter(
+                x=[end_pt[0], ex],
+                y=[end_pt[1], ey],
+                mode="lines",
+                line=dict(color=color, dash="dot", width=1),
+                showlegend=False,
+                hoverinfo="skip",
+                meta=int(idx),
+                legendgroup=str(display_idx),
+                visible=True,
+            )
+        )
+
+        road_anchor = None
         try:
-            road_anchor = row.road_anchor_tree_series.sample(n=1)
+            anchor_df = row.road_anchor_tree_series
+            if getattr(anchor_df, "empty", False):
+                raise ValueError("Empty DataFrame")
+            if hasattr(anchor_df, "sample"):
+                sampled = anchor_df.sample(n=1)
+                road_anchor = sampled.iloc[0] if hasattr(sampled, "iloc") else sampled
+            elif isinstance(anchor_df, (list, tuple)):
+                road_anchor = anchor_df[0]
+            else:
+                road_anchor = anchor_df
         except Exception:
-            road_anchor = row.road_anchor_tree_series.iloc[0]
-        road_x.append(round(float(road_anchor["x"]), 2))
-        road_y.append(round(float(road_anchor["y"]), 2))
-        road_bhd.append(int(road_anchor["BHD"]))
+            road_anchor = None
 
-    tail_trace = go.Scatter(
-        x=tail_x,
-        y=tail_y,
-        mode="markers",
-        marker=dict(color="brown", symbol="x", size=10),
-        name="Tail Anchors",
-        customdata=tail_bhd,
-        hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
-    )
+        if road_anchor is not None:
+            rx = round(road_anchor["x"], 2)
+            ry = round(road_anchor["y"], 2)
+            
+            road_markers.append(
+                go.Scatter(
+                    x=[rx],
+                    y=[ry],
+                    mode="markers",
+                    marker=dict(color=color, symbol="circle", size=10),
+                    showlegend=False,
+                    name=f"Road Anchor {display_idx}",
+                    customdata=[[int(road_anchor["BHD"]), idx]],
+                    hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
+                    meta=int(idx),
+                    legendgroup=str(display_idx),
+                )
+            )
 
-    road_trace = go.Scatter(
-        x=road_x,
-        y=road_y,
-        mode="markers",
-        marker=dict(color="purple", symbol="x", size=10),
-        name="Road Anchors",
-        customdata=road_bhd,
-        hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
-    )
+            road_lines.append(
+                go.Scatter(
+                    x=[start_pt[0], rx],
+                    y=[start_pt[1], ry],
+                    mode="lines",
+                    line=dict(color=color, dash="dot", width=1),
+                    showlegend=False,
+                    hoverinfo="skip",
+                    meta=int(idx),
+                    legendgroup=str(display_idx),
+                    visible=True,
+                )
+            )
 
-    return tail_trace, road_trace
+    return tail_markers, road_markers, tail_lines, road_lines
 
 
 def update_interactive_based_on_indices(
@@ -184,6 +238,7 @@ def update_interactive_based_on_indices(
     road_anchor_table_figure,
     current_indices,
     interactive_layout,
+    color_map,
     forest_area_3,
     model_list,
     transparent_line,
@@ -193,14 +248,11 @@ def update_interactive_based_on_indices(
     Function to update the interactive layout based on the current indices as well as the corresponding tables
     """
 
-    # first set all traces to lightgrey, ie deactivated:
+    # first set all traces to lightgrey and hide them
     interactive_layout.update_traces(line=transparent_line)
 
-    for active_row in current_indices:
-        # then, set the traces at the indices of the selected pareto option to black
-        interactive_layout.update_traces(
-            line=solid_line, selector={"meta": active_row}
-        )
+    for trace in interactive_layout.data[2:]:
+        trace.visible = True
 
     # and update the list of current indices to the new ones as well as the layout
     update_tables_no_layout(
@@ -213,7 +265,7 @@ def update_interactive_based_on_indices(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
+    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
 
 
 def update_colors_and_tables(
@@ -224,6 +276,7 @@ def update_colors_and_tables(
     road_anchor_table_figure,
     current_indices,
     interactive_layout,
+    color_map,
     forest_area_3,
     model_list,
 ):
@@ -241,7 +294,7 @@ def update_colors_and_tables(
         forest_area_3,
         model_list,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
+    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
 
 
 def update_tables(
@@ -429,6 +482,7 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     except:
         tree_to_line_assignment = [1 for i in range(len(distance_tree_line))]
         distance_trees_to_lines_sum = sum(distance_tree_line)
+        distance_trees_to_selected_lines = []
 
     # compute the productivity cost
     selected_prod_cost = model_list[0].productivity_cost[:, indices]
@@ -593,32 +647,63 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     }
 
 
-def update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3=None, model_list=None):
+def update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3=None, model_list=None):
     """Set line colors and hover information for the currently active cable roads."""
 
+    color_transparent = "rgba(0, 0, 0, 0.4)"
+
     volumes = None
-    if forest_area_3 is not None and model_list is not None:
+    if current_indices and forest_area_3 is not None and model_list is not None:
         layout_data = update_layout_overview(current_indices, forest_area_3, model_list)
         volumes = layout_data["Wood Volume per Cable Corridor (m3)"]
 
-    for integer, indice in enumerate(current_indices):
+    #reset traces to grey and show tem
+    for trace in interactive_layout.data[2:]:
+        idx = getattr(trace, "meta", None)
+        if idx is None:
+            continue
+        if hasattr(trace, "line"):
+            if getattr(trace.line, "dash", None):
+                trace.line.color = color_transparent
+                trace.line.width = 1
+            else:
+                trace.line.color = color_transparent
+                trace.line.width = 0.5
+
+            trace.visible = True
+            trace.hovertemplate = None
+        elif trace.mode.startswith("markers"):
+            trace.marker.color = color_transparent
+            trace.marker.symbol = "circle"
+            trace.visible = True
+
+    # apply colors to active lines
+    for indice in current_indices:
+        color = color_map.get(indice, px.colors.qualitative.Plotly[0])
         hover = None
         if volumes is not None and indice in forest_area_3.line_gdf.index:
             length = int(forest_area_3.line_gdf.loc[indice, "line_length"])
-            vol = volumes[integer] if integer < len(volumes) else volumes[0]
-            hover = f"Cable Length: {length} m<br>Wood Volume: {vol} m3"
+            vol = volumes[current_indices.index(indice)]
+            hover = f"Index. {indice}<br>Cable Length: {length} m<br>Wood Volume: {vol} m3"
 
-        interactive_layout.update_traces(
-            line=dict(color=px.colors.qualitative.Plotly[integer], width=5),
-            hovertemplate=hover,
-            selector={"meta": indice},
-        )
+        for trace in interactive_layout.data[2:]:
+            if getattr(trace, "meta", None) != indice:
+                continue
 
-    # remove hover info from inactive lines
-    active_set = set(current_indices)
-    for trace in interactive_layout.data[2:]:
-        if trace.meta not in active_set:
-            trace.hovertemplate = None
+            if hasattr(trace, "line"):
+                if getattr(trace.line, "dash", None):
+                    trace.line.color = color
+                    trace.line.width = 1
+                    trace.visible = True
+                else:
+                    trace.line.color = color
+                    trace.line.width = 5
+                    trace.visible = True
+
+            elif trace.mode.startswith("markers"):
+                trace.marker.color = color
+                trace.marker.symbol = "x"
+                trace.visible = True
 
 
 def interactive_cr_selection(
@@ -655,6 +740,11 @@ def interactive_cr_selection(
     display_to_real = dict(zip(display_names, indices_to_show))
     real_to_display = dict(zip(indices_to_show, display_names))
 
+    color_map = {
+        idx: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+        for i, idx in enumerate(indices_to_show)
+    }
+
     # create traces for the lines and trees
     trees, individual_lines = create_trees_and_lines_traces(
         forest_area_3,
@@ -667,14 +757,19 @@ def interactive_cr_selection(
     contour_traces = create_contour_traces(forest_area_3)
 
     # create a figure from all individual scatter lines
-    tail_anchors, road_anchors = create_anchor_traces(
-        forest_area_3, selected_indices=indices_to_show
+    tail_anchors, road_anchors, tail_anchor_lines, road_anchor_lines = create_anchor_traces(
+        forest_area_3, 
+        transparent_line, 
+        color_map, 
+        real_to_display, 
+        selected_indices=indices_to_show
     )
 
-    # create a figure from all individual scatter lines and anchors
+    # create a figure from all individual scatter lines and anchors lines
     interactive_layout = go.FigureWidget(
-        [trees, contour_traces, tail_anchors, road_anchors, *individual_lines]
+        [trees, contour_traces, *individual_lines, *tail_anchor_lines, *road_anchor_lines, *tail_anchors, *road_anchors]
     )
+    update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list)
     interactive_layout.update_layout(
         title="Cable Corridor Map",
         width=1200,
@@ -852,8 +947,6 @@ def interactive_cr_selection(
     def layout_table_click(trace, points, selector):
         if points.point_inds:
             index = points.point_inds[0]
-            highlight_layout_row(index)
-            update_selected_marker(index)
             corresponding_indices = layout_overview_df.iloc[index]["Selected Cable Corridors"]
             update_interactive_based_on_indices(
                 current_cable_roads_table_figure,
@@ -863,11 +956,14 @@ def interactive_cr_selection(
                 road_anchor_table_figure,
                 corresponding_indices,
                 interactive_layout,
+                color_map,
                 forest_area_3,
                 model_list,
                 transparent_line,
                 solid_line,
             )
+            highlight_layout_row(index)
+            update_selected_marker(index)
     
     layout_overview_table_figure.data[0].on_click(layout_table_click)
 
@@ -939,7 +1035,9 @@ def interactive_cr_selection(
                 yaxis_title="Ergonomics Optimality",
                 zaxis_title="Cost Optimality",
                 xaxis={"autorange": "reversed"},
+                camera=dict(projection=dict(type="orthographic"))
             ),
+            clickmode="event+select",
             scene_camera=dict(
                 eye=dict(x=1.7, y=1.7, z=1),
                 center=dict(x=0, y=0, z=-0.5),
@@ -970,6 +1068,7 @@ def interactive_cr_selection(
                 road_anchor_table_figure,
                 current_indices,
                 interactive_layout,
+                color_map,
                 forest_area_3,
                 model_list,
                 transparent_line,
@@ -1070,7 +1169,7 @@ def interactive_cr_selection(
 
             # color the traces
             # we set the color of the lines in the current indices in consecutive order by choosing corresponding colors from the colorway
-            update_line_colors_by_indices(current_indices, interactive_layout, forest_area_3, model_list)
+            update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list)
 
             # update the tables accordingly
             update_tables(
@@ -1133,6 +1232,7 @@ def interactive_cr_selection(
             road_anchor_table_figure,
             current_indices,
             interactive_layout,
+            color_map,
             forest_area_3,
             model_list,
         )
@@ -1177,6 +1277,8 @@ def interactive_cr_selection(
 
         # reset the layout
         interactive_layout.update_traces(line=transparent_line)
+        for trace in interactive_layout.data[2:]:
+            trace.visible = False
 
         # reset the tables
         current_cable_roads_table_figure.data[0].cells.values = [
