@@ -653,6 +653,11 @@ def update_line_colors_by_indices(
         hide_unselected=True):
     """Set line colors and hover information for the currently active cable roads."""
 
+    order = sorted(current_indices)
+    palette = px.colors.qualitative.Plotly
+    def cr_colour(idx: int) -> str:
+        return palette[order.index(idx) % len(palette)]
+
     current_indices = list(map(int, current_indices))
     color_transparent = "rgba(0, 0, 0, 0.4)"
 
@@ -675,17 +680,13 @@ def update_line_colors_by_indices(
             trace.marker.symbol = "circle"
         
         if hide_unselected:
-            if hasattr(trace, "line") and getattr(trace, "showlegend", True):
-                trace.visible = "legendonly"
-            else:
-                trace.visible = False
+            trace.visible = "legendonly"
         else:
             trace.visible = True
 
     # apply colors to active lines
-    ordered = sorted(current_indices)
     for indice in current_indices:
-        color = px.colors.qualitative.Plotly[ordered.index(indice) % len(px.colors.qualitative.Plotly)]
+        color = cr_colour(indice)
         hover = None
         if volumes is not None and indice in forest_area_3.line_gdf.index:
             length = int(forest_area_3.line_gdf.loc[indice, "line_length"])
