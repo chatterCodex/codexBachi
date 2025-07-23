@@ -179,6 +179,50 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
             )
         )
 
+        anchor_df = row.tree_anchor_support_trees
+
+        if getattr(anchor_df, "empty", False):
+            anchor_iter = []
+        elif isinstance(anchor_df, pd.DataFrame):
+            anchor_iter = anchor_df.iloc[1:].to_dict(orient="records")
+        else:
+            anchor_iter = [anchor_df]
+
+        color = color_map[idx]
+        display_idx = real_to_display[idx]
+
+        for anchor in anchor_iter:
+            ex, ey = round(anchor["x"], 2), round(anchor["y"], 2)
+
+            tail_markers.append(
+                go.Scatter(
+                    x=[ex],
+                    y=[ey],
+                    mode="markers",
+                    marker=dict(color=color, symbol="circle", size=10),
+                    showlegend=False,
+                    name=f"Tail Anchor {display_idx}",
+                    customdata=[[int(anchor["BHD"]), idx]],
+                    hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
+                    meta=int(idx),
+                    legendgroup=str(display_idx),
+                )
+            )
+
+            tail_lines.append(
+                go.Scatter(
+                    x=[end_pt[0], ex],
+                    y=[end_pt[1], ey],
+                    mode="lines",
+                    line=dict(color=color, dash="dot", width=1),
+                    showlegend=False,
+                    hoverinfo="skip",
+                    meta=int(idx),
+                    legendgroup=str(display_idx),
+                    visible=True,
+                )
+            )
+
         road_anchor = None
         try:
             anchor_df = row.road_anchor_tree_series
