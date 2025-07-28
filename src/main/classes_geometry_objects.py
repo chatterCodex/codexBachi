@@ -16,6 +16,10 @@ class Point_3D:
         return np.sqrt(
             (self.x - other.x) ** 2 + (self.y - other.y) ** 2 + (self.z - other.z) ** 2
         )
+    
+    def to_dict(self) -> dict:
+        """Returns the point as a dictionary"""
+        return {"x": self.x, "y": self.y, "z": self.z}
 
 
 class LineString_3D:
@@ -44,3 +48,11 @@ class LineString_3D:
 
     def length(self):
         return self.start_point.distance(self.end_point)
+    
+    def to_dict(self) -> dict:
+        """Returns the line string as a dictionary"""
+        return {
+            "start_point": self.start_point.to_dict(),
+            "end_point": self.end_point.to_dict(),
+            "length": self.length()
+        }

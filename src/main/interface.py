@@ -134,75 +134,43 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
 
     for idx in selected_indices:
         row = forest_area_3.line_gdf.loc[idx]
+        # print("\n")
+        # print(idx, row)
 
         line = row.geometry
         start_pt = line.coords[0]
         end_pt = line.coords[-1]
 
-        try:
-            endmast = row.tree_anchor_support_trees.iloc[0]
-        except Exception:
-            endmast = row.tree_anchor_support_trees
-
-        ex = round(endmast["x"], 2)
-        ey = round(endmast["y"], 2)
-        
-        color = color_map[idx]
-        display_idx = real_to_display[idx]
-
-        tail_markers.append(
-            go.Scatter(
-                x=[ex],
-                y=[ey],
-                mode="markers",
-                marker=dict(color=color, symbol="circle", size=10),
-                showlegend=False,
-                name=f"Tail Anchor {display_idx}",
-                customdata=[[int(endmast["BHD"]), idx]],
-                hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
-                meta=int(idx),
-                legendgroup=str(display_idx),
-            )
-        )
-
-        tail_lines.append(
-            go.Scatter(
-                x=[end_pt[0], ex],
-                y=[end_pt[1], ey],
-                mode="lines",
-                line=dict(color=color, dash="dot", width=1),
-                showlegend=False,
-                hoverinfo="skip",
-                meta=int(idx),
-                legendgroup=str(display_idx),
-                visible=True,
-            )
-        )
+        print(row["Cable Road Object"])
 
         anchor_df = row.tree_anchor_support_trees
 
-        if getattr(anchor_df, "empty", False):
-            anchor_iter = []
+        if isinstance(anchor_df, dict) and "features" in anchor_df:
+            anchor_iter = anchor_df["features"]
         elif isinstance(anchor_df, pd.DataFrame):
-            anchor_iter = anchor_df.iloc[1:].to_dict(orient="records")
+            anchor_iter =anchor_df.to_dict('records')
         else:
-            anchor_iter = [anchor_df]
+            anchor_iter = []
 
         color = color_map[idx]
         display_idx = real_to_display[idx]
 
         for anchor in anchor_iter:
-            ex, ey = round(anchor["x"], 2), round(anchor["y"], 2)
+            # print("Anchor")
+            print(anchor)
+            properties = anchor.get("properties", anchor)
+            ex = round(properties["x"], 2)
+            ey = round(properties["y"], 2)
 
             tail_markers.append(
                 go.Scatter(
                     x=[ex],
                     y=[ey],
                     mode="markers",
-                    marker=dict(color=color, symbol="circle", size=10),
+                    marker=dict(color=color, symbol="triangle-up", size=10),
                     showlegend=False,
                     name=f"Tail Anchor {display_idx}",
-                    customdata=[[int(anchor["BHD"]), idx]],
+                    customdata=[[int(properties["BHD"]), idx]],
                     hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
                     meta=int(idx),
                     legendgroup=str(display_idx),
@@ -223,34 +191,30 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
                 )
             )
 
-        road_anchor = None
-        try:
-            anchor_df = row.road_anchor_tree_series
-            if getattr(anchor_df, "empty", False):
-                raise ValueError("Empty DataFrame")
-            if hasattr(anchor_df, "sample"):
-                sampled = anchor_df.sample(n=1)
-                road_anchor = sampled.iloc[0] if hasattr(sampled, "iloc") else sampled
-            elif isinstance(anchor_df, (list, tuple)):
-                road_anchor = anchor_df[0]
-            else:
-                road_anchor = anchor_df
-        except Exception:
-            road_anchor = None
+        road_anchor_df = row.road_anchor_tree_series
 
-        if road_anchor is not None:
-            rx = round(road_anchor["x"], 2)
-            ry = round(road_anchor["y"], 2)
-            
+        # Ensure road_anchor_df is a DataFrame
+        if isinstance(road_anchor_df, dict) and "features" in road_anchor_df:
+            road_anchor_iter = road_anchor_df["features"]
+        elif isinstance(road_anchor_df, pd.DataFrame):
+            road_anchor_iter = road_anchor_df.to_dict('records')
+        else:
+            road_anchor_iter = []
+
+        for road_anchor in road_anchor_iter:
+            properties = road_anchor.get("properties", road_anchor)
+            rx = round(properties["x"], 2)
+            ry = round(properties["y"], 2)
+
             road_markers.append(
                 go.Scatter(
                     x=[rx],
                     y=[ry],
                     mode="markers",
-                    marker=dict(color=color, symbol="circle", size=10),
+                    marker=dict(color=color, symbol="triangle-down", size=10),
                     showlegend=False,
                     name=f"Road Anchor {display_idx}",
-                    customdata=[[int(road_anchor["BHD"]), idx]],
+                    customdata=[[int(properties["BHD"]), idx]],
                     hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
                     meta=int(idx),
                     legendgroup=str(display_idx),
@@ -271,7 +235,7 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
                 )
             )
 
-    return tail_markers, road_markers, tail_lines, road_lines
+    return tail_markers, tail_lines, road_markers, road_lines
 
 
 def update_interactive_based_on_indices(
@@ -704,6 +668,7 @@ def update_line_colors_by_indices(
 
     current_indices = list(map(int, current_indices))
     color_transparent = "rgba(0, 0, 0, 0.4)"
+    default_marker_color = "green" if not current_indices else color_transparent
 
     volumes = None
     if current_indices and forest_area_3 is not None and model_list is not None:
@@ -720,8 +685,13 @@ def update_line_colors_by_indices(
             trace.line.width = 1 if getattr(trace.line, "dash", None) else 0.5
             trace.hovertemplate = None
         elif trace.mode.startswith("markers"):
-            trace.marker.color = color_transparent
-            trace.marker.symbol = "circle"
+            trace.marker.color = default_marker_color
+            if "Tail Anchor" in trace.name:
+                trace.marker.symbol = "triangle-up"
+            elif "Road Anchor" in trace.name:
+                trace.marker.symbol = "square"
+            else:
+                trace.marker.symbol = "circle"
         
         if hide_unselected:
             trace.visible = "legendonly"
@@ -752,7 +722,12 @@ def update_line_colors_by_indices(
 
             elif trace.mode.startswith("markers"):
                 trace.marker.color = color
-                trace.marker.symbol = "x"
+                if "Tail Anchor" in trace.name:
+                    trace.marker.symbol = "triangle-up"
+                elif "Road Anchor" in trace.name:
+                    trace.marker.symbol = "square"
+                else:
+                    trace.marker.symbol = "circle"
                 trace.visible = True
 
 
@@ -820,12 +795,52 @@ def interactive_cr_selection(
         [trees, contour_traces, *individual_lines, *tail_anchor_lines, *road_anchor_lines, *tail_anchors, *road_anchors]
     )
     update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list, hide_unselected=False)
+
+    # determine map extent so all anchors fit in view
+    x_vals = []
+    y_vals = []
+
+    for line in forest_area_3.line_gdf.geometry:
+        xs, ys = line.xy
+        x_vals.extend(xs)
+        y_vals.extend(ys)
+
+    for anchors in forest_area_3.line_gdf.tree_anchor_support_trees:
+        if getattr(anchors, "empty", False):
+            continue
+        if isinstance(anchors, pd.DataFrame):
+            records = anchors.to_dict(orient="records")
+        else:
+            records = [anchors]
+        for record in records:
+            x_vals.append(float(record["x"]))
+            y_vals.append(float(record["y"]))
+
+    for anchors in forest_area_3.line_gdf.road_anchor_tree_series:
+        if getattr(anchors, "empty", False):
+            continue
+        if hasattr(anchors, "sample"):
+            record = anchors.iloc[0]
+        elif isinstance(anchors, (list, tuple)):
+            record = anchors[0]
+        else:
+            records = anchors
+        x_vals.append(float(record["x"]))
+        y_vals.append(float(record["y"]))
+
+    margin = 10
+    x_range = [min(x_vals) - margin, max(x_vals) + margin]
+    y_range = [min(y_vals) - margin, max(y_vals) + margin]
+        
     interactive_layout.update_layout(
         title="Cable Corridor Map",
         width=1200,
         height=900,
-        xaxis=dict(title="X (m)"),
-        yaxis=dict(title="Y (m)"),
+        xaxis=dict(title="X (m)", range=x_range),
+        yaxis=dict(title="Y (m)", range=y_range),
+        margin=dict(r=0, l=0, t=0, b=0),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
     )
 
     # create a dataframe and push it to a figurewidget to display details about our selected lines
