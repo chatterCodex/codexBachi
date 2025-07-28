@@ -1,21 +1,9 @@
-from ast import alias
-from calendar import c
-from functools import partial
-import re
-from turtle import up, update
-from click import style
-from matplotlib import legend
-from matplotlib.axis import XAxis, YAxis
 import pandas as pd
 import numpy as np
-from typing import Tuple
-from shapely.geometry import LineString
 
 import plotly.graph_objects as go
 import plotly.express as px
-from ipywidgets.widgets import Button, Dropdown, Textarea, Layout
-from pygments import highlight
-from torch import layout, prod
+from ipywidgets.widgets import Button, Layout
 
 from src.main import geometry_operations, plotting_3d
 
@@ -1175,21 +1163,6 @@ def interactive_cr_selection(
 
     update_selected_marker(None)
 
-    # 3d scatter plot for viewing the layout in 3d
-    layout_3d_scatter_plot = go.FigureWidget(go.Scatter3d())
-
-    layout_3d_scatter_plot.update_layout(
-        title="""3D Plot of Cable Corridor Layout""",
-        width=1000,
-        height=600,
-        scene_camera_eye=dict(x=0.5, y=0.5, z=1),
-        scene=dict(
-            xaxis_title="X (m)",
-            yaxis_title="Y (m)",
-            zaxis_title="Z (m)",
-        ),
-    )
-
     # create the onclick function to select new CRs
     def selection_fn(trace, points, selector):
         # since the handler is activated for all lines, test if this one has coordinates, ie. is the clicked line
@@ -1311,24 +1284,6 @@ def interactive_cr_selection(
     def move_right_callback(button):
         set_current_cr(left=False)
 
-    def view_in_3d_callback(button, scatterplot=layout_3d_scatter_plot):
-        """
-        Function to view the current layout in 3d. This updates the layout_3d_scatter_plot with the new 3d scatterplot based on the current indices
-        """
-        nonlocal current_indices
-        # print("Viewing in 3D", current_indices)
-        # print(type(current_indices))
-
-        # reset the scatterplot
-        scatterplot.data = []
-
-        # get the new traces
-        new_figure_traces = plotting_3d.plot_all_cable_roads(
-            forest_area_3.height_gdf, forest_area_3.line_gdf.iloc[current_indices]
-        ).data
-
-        scatterplot.add_traces(new_figure_traces)
-
     def reset_button_callback(button):
         """
         Function to reset the currently selected cable roads
@@ -1370,29 +1325,7 @@ def interactive_cr_selection(
         highlight_layout_row(None)
         update_selected_marker(None)
 
-    def create_explanation_widget():
-        return Textarea(
-            value="",
-            placeholder="",
-            description="Explanation:",
-            disabled=True,
-            layout=Layout(width="90%", height="100px"),
-        )
-
-    def explanation_dropdown():
-        dropdown_menu = Dropdown(
-            options=[
-                "Pareto Frontier",
-                "Ecological Penalty",
-                "Ergonomic Penalty",
-                "Cost",
-                "Stand Information",
-            ],
-            description="Load explanation",
-        )
-        return dropdown_menu
-
-    def create_buttons(layout_3d_scatter_plot):
+    def create_buttons():
         """
         Define the buttons for interacting with the layout and the comparison table
         """
@@ -1403,47 +1336,19 @@ def interactive_cr_selection(
             button_style="danger",
             layout=Layout(width="150px", margin="10px 0 0 auto")
         )
-        view_in_3d_button = Button(description="View in 3D")
-
-        explanation_widget = create_explanation_widget()
-        explanation_dropdown_menu = explanation_dropdown()
 
         # and bind all the functions to the buttons
         move_left_button.on_click(move_left_callback)
         move_right_button.on_click(move_right_callback)
         reset_all__CRs_button.on_click(reset_button_callback)
-        view_in_3d_button.on_click(
-            partial(view_in_3d_callback, scatterplot=layout_3d_scatter_plot)
-        )
-
-        def explanation_dropdown_onclick(change):
-            if change["type"] == "change" and change["name"] == "value":
-                if change["new"] == "":
-                    return
-
-                if change.new == "Pareto Frontier":
-                    explanation_widget.value = "The Pareto Frontier shows the trade-offs between ecological, ergonomic and cost objectives. Each point represents a layout with different cable road configurations. The points on the frontier are the most optimal layouts, where no objective can be improved without worsening another. Click on a point to select the corresponding layout."
-                elif change.new == "Ecological Penalty":
-                    explanation_widget.value = "The ecological penalty represents the environmental impact of each cable road and measures the residual stand damage of each cable road based on Limbeck-Lillineau (2020)."
-                elif change.new == "Ergonomic Penalty":
-                    explanation_widget.value = "The ergonomic penalty quantifies the physical strain on the forest worker for each cable road based on lateral yarding distance (Ghaffaryian et al., 2009)."
-                elif change.new == "Cost":
-                    explanation_widget.value = "The cost represents the total cable road costs. It includes corridor setup- and takedown cost (Stampfer et al., 2013) as well as productivity costs (Ghaffaryian et al., 2009)."
-                elif change.new == "Stand Information":
-                    explanation_widget.value = f"Wood volume:{int(forest_area_3.harvesteable_trees_gdf['cubic_volume'].sum())} m3."
-
-        explanation_dropdown_menu.observe(explanation_dropdown_onclick)
 
         return (
             move_left_button,
             move_right_button,
             reset_all__CRs_button,
-            view_in_3d_button,
-            explanation_widget,
-            explanation_dropdown_menu,
         )
 
-    buttons = list(create_buttons(layout_3d_scatter_plot))
+    buttons = list(create_buttons())
     print("test")
 
     return (
@@ -1456,8 +1361,4 @@ def interactive_cr_selection(
         buttons[0],
         buttons[1],
         buttons[2],
-        buttons[3],
-        layout_3d_scatter_plot,
-        buttons[4],
-        buttons[5],
     )
