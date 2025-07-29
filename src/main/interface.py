@@ -323,17 +323,29 @@ def update_tables(
     ]
 
     # set the current_cable_roads_table dataframe rows to show only these CRs
-    line_costs, line_lengths, dummy_variable = current_cable_roads_table.loc[
+    subset = current_cable_roads_table.loc[
         current_cable_roads_table.index.isin(current_indices)
-    ].values.T
+    ]
+
+    corridor_numbers = subset.index.astype(int)
+    line_costs = subset["line_cost"].values
+    line_lengths = subset["line_length"].values
+
+    support_heights = [
+        "/" if len(h) == 0 else ", ".join(map(lambda x: str(int(x)), h))
+        for h in updated_layout_costs["Supports Height (m)"]
+    ]
 
     current_cable_roads_table_figure.data[0].cells.values = [
+        corridor_numbers,
         line_costs.astype(int),
         line_lengths.astype(int),
         updated_layout_costs["Wood Volume per Cable Corridor (m3)"],
         updated_layout_costs["Supports Amount"],
-        updated_layout_costs["Supports Height (m)"],
+        support_heights,
         updated_layout_costs["Average Tree Height (m)"],
+        updated_layout_costs["Max Yarding Distance per Cable Corridor (m)"],
+        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"]
     ]
 
     # as well as the colour of the corresponding trees
@@ -378,17 +390,29 @@ def update_tables_no_layout(
 
     updated_layout_costs = update_layout_overview(current_indices, forest_area_3, model_list)
 
-    line_costs, line_lengths, _ = current_cable_roads_table.loc[
+    subset = current_cable_roads_table.loc[
         current_cable_roads_table.index.isin(current_indices)
-    ].values.T
+    ]
+
+    corridor_numbers = subset.index.astype(int)
+    line_costs = subset["line_cost"].values
+    line_lengths = subset["line_length"].values
+
+    support_heights = [
+        "/" if len(h) == 0 else ", ".join(map(lambda x: str(int(x)), h))
+        for h in updated_layout_costs["Supports Height (m)"]
+    ]
 
     current_cable_roads_table_figure.data[0].cells.values = [
+        corridor_numbers,
         line_costs.astype(int),
         line_lengths.astype(int),
         updated_layout_costs["Wood Volume per Cable Corridor (m3)"],
         updated_layout_costs["Supports Amount"],
-        updated_layout_costs["Supports Height (m)"],
+        support_heights,
         updated_layout_costs["Average Tree Height (m)"],
+        updated_layout_costs["Max Yarding Distance per Cable Corridor (m)"],
+        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"]
     ]
 
     interactive_layout.data[0].marker.color = [
@@ -518,6 +542,18 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     ]
     supports_amount = [len(heights) for heights in supports_height]
 
+    # compute yarding distances per cable corridor
+    max_yarding_distance_per_cr = []
+    average_yarding_distance_per_cr = []
+    for line_idx, grouped_indices in enumerate(grouped_class_indices):
+        if len(grouped_indices) == 0:
+            max_yarding_distance_per_cr.append(0)
+            average_yarding_distance_per_cr.append(0)
+        else:
+            dists = distance_carriage_support[grouped_indices, line_idx]
+            max_yarding_distance_per_cr.append(int(max(dists)))
+            average_yarding_distance_per_cr.append(int(np.mean(dists)))
+
     # get the tail spar anchor
     endmast_height_list = []
     endmast_BHD_list = []
@@ -616,6 +652,8 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
         "Cost per m3 (€)": round(cost_per_m3, 2),
         "Average Tree Height (m)": average_tree_size_per_cr,
         "Volume per Meter (m3/m)": round(volume_per_running_meter, 2),
+        "Max Yarding Distance per Cable Corridor (m)": max_yarding_distance_per_cr,
+        "Average Yarding Distance per Cable Corridor (m)": average_yarding_distance_per_cr,
         "Anchor height": endmast_height_list,
         "Anchor BHD": endmast_BHD_list,
         "Anchor max holding force": endmast_max_holding_force_list,
@@ -836,24 +874,27 @@ def interactive_cr_selection(
             go.Table(
                 header=dict(
                     values=[
-                        "Cable Corridor Setup Cost (€)",
-                        "Cable Corridor Length (m)",
-                        "Wood Volume per Cable Corridor (m3)",
-                        "Supports Amount",
-                        "Supports Height (m)",
-                        "Average Tree Height (m)",
+                        "Seiltrassen Nummer",
+                        "Aufbaukosten [€]",
+                        "Seillänge [m]",
+                        "Vfm pro Seiltrasse [m³]",
+                        "Stützbaum Anzahl",
+                        "Tragseilhöhe Stütze [m]",
+                        "Durchschnittliche Baumhöhe [m]",
+                        "Max Zugseillänge [m]",
+                        "Durchschnittliche Zugseillänge [m]",
                     ],
                     fill_color="rgb(217, 217, 217)",
                     align="center",
                     line_color="darkgrey",
-                    font = dict(color="black", size = 12, family = "Arial")
+                    font=dict(color="black", size = 12, family = "Arial")
                 ),
-                cells=dict(values=[], align = "center"),
+                cells=dict(values=[], align="center"),
             )
         ]
     )
     current_cable_roads_table_figure.update_layout(
-        title="Activated Cable Corridor Overview",
+        title="Aktivierte Seiltrassen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
@@ -1302,6 +1343,9 @@ def interactive_cr_selection(
 
         # reset the tables
         current_cable_roads_table_figure.data[0].cells.values = [
+            [],
+            [],
+            [],
             [],
             [],
             [],
