@@ -635,13 +635,13 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     # wood volume per running meter of cable road
     # get the total length of the cable road
     total_cable_road_length = sum(rot_line_gdf["line_length"])
-    volume_per_running_meter = total_cable_road_length / sum(wood_volume_per_cr)
+    volume_per_running_meter = sum(wood_volume_per_cr) / total_cable_road_length
 
     # return a dict of the results and convert all results to ints for readability
     return {
         "Wood Volume per Cable Corridor (m3)": wood_volume_per_cr,
         "Total Cable Corridor Costs (€)": int(total_cable_road_costs),
-        "Setup and Takedown, Prod. Costs (€)": f"{int(line_cost)}, {int(productivity_cost_overall)}",
+        "Setup and Takedown, Prod. Costs (€)": f"{int(line_cost)} / {int(productivity_cost_overall)}",
         "Ecol. Penalty": int(sum_eco_distances),
         "Ergon. Penalty": int(sum_ergo_distances),
         "Tree to Cable Corridor Assignment": tree_to_line_assignment,
@@ -903,15 +903,15 @@ def interactive_cr_selection(
 
     # and for the layout overview
     layout_columns = [
-        "Total Layout Costs (€)",
-        "Setup and Takedown, Prod. Costs (€)",
-        "Ecol. Penalty",
-        "Ergon. Penalty",
-        "Selected Cable Corridors",
-        "Max lateral Yarding Distance (m)",
-        "Average lateral Yarding Distance (m)",
-        "Cost per m3 (€/m)",
-        "Volume per Meter (m3/m)",
+        "Gesamt Kosten [€]",
+        "Auf- und Abbau Kosten [€]",
+        "Ökologische Penalty",
+        "Ergonomische Penalty",
+        "Verwendete Seillinien",
+        "Max Zuzugslänge [m]",
+        "Durchschnittliche Zuzugslänge [m]",
+        "Kosten pro Vfm [€/m³]",
+        "Vfm pro m Seillänge [m³/m]",
     ]
 
     all_layouts = []
@@ -950,8 +950,7 @@ def interactive_cr_selection(
         ]
     )
     layout_overview_table_figure.update_layout(
-        title="Current Cable Corridor Layout Overview",
-        height=300,
+        title="Vergleich der Seiltrassenmodelle",
         margin=dict(r=30, l=30, t=30, b=30),
     )
     style_table(layout_overview_table_figure)
