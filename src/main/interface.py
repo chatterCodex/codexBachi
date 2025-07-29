@@ -3,7 +3,7 @@ import numpy as np
 
 import plotly.graph_objects as go
 import plotly.express as px
-from ipywidgets.widgets import Button, Layout
+from ipywidgets.widgets import Button, Layout, Checkbox, HBox, VBox, Label
 
 from src.main import geometry_operations, plotting_3d
 
@@ -910,6 +910,7 @@ def interactive_cr_selection(
         "Verwendete Seillinien",
         "Max Zuzugslänge [m]",
         "Durchschnittliche Zuzugslänge [m]",
+        "Durchschnittliche Stützbaum Anzahl",
         "Kosten pro Vfm [€/m³]",
         "Vfm pro m Seillänge [m³/m]",
     ]
@@ -917,6 +918,11 @@ def interactive_cr_selection(
     all_layouts = []
     for i, row in results_df.iterrows():
         layout_data = update_layout_overview(row["selected_lines"], forest_area_3, model_list)
+        avg_supports = (
+            int(np.mean(layout_data["Supports Amount"]))
+            if layout_data.get("Supports Amount")
+            else 0
+        )
         all_layouts.append([
             i + 1,
             layout_data["Total Cable Corridor Costs (€)"],
@@ -926,6 +932,7 @@ def interactive_cr_selection(
             layout_data["Corresponding Cable Corridor"],
             layout_data["Max lateral Yarding Distance (m)"],
             layout_data["Average lateral Yarding Distance (m)"],
+            avg_supports,
             layout_data["Cost per m3 (€)"],
             layout_data["Volume per Meter (m3/m)"],
         ])
@@ -954,6 +961,40 @@ def interactive_cr_selection(
         margin=dict(r=30, l=30, t=30, b=30),
     )
     style_table(layout_overview_table_figure)
+
+    # table to toggle visibility of optimization results
+    visibility_headers = [
+        "Index",
+        "Kosten Optimierung",
+        "Ergonomische Optimierung",
+        "Ökologische Optimierung",
+        "Anzeigen / Ausblenden",
+    ]
+
+    ergonomics_column = (
+        "ergonomics_discances_RNI"
+        if "ergonomics_discances_RNI" in results_df.columns
+        else "ergonomics_distances_RNI"
+    )
+
+    visibility_checkboxes = []
+    visibility_rows = [HBox([Label(text=h) for h in visibility_headers])]
+
+    for i, row in results_df.iterrows():
+        cb = Checkbox(value=True)
+        visibility_checkboxes.append(cb)
+        row_widgets = HBox(
+            [
+                Label(str(i + 1)),
+                Label(str(row["cost_objective_RNI"])),
+                Label(str(row[ergonomics_column])),
+                Label(str(row["ecological_distances_RNI"])),
+                cb,
+            ]
+        )
+        visibility_rows.append(row_widgets)
+    
+    model_visibility_table = VBox(visibility_rows)
 
     selected_layout_row = None
 
@@ -1112,13 +1153,13 @@ def interactive_cr_selection(
         )
 
         pareto_frontier.update_layout(
-            title="""Pareto Frontier of Optimal Solutions""",
+            title="Vergleich der Seiltrassenmodelle",
             width=800,
             height=400,
             scene=dict(
-                xaxis_title="Ecological Optimality",
-                yaxis_title="Ergonomics Optimality",
-                zaxis_title="Cost Optimality",
+                xaxis_title="Ökologische Optimierung",
+                yaxis_title="Ergonomische Optimalität",
+                zaxis_title="Kosten Optimierung",
                 xaxis={"autorange": "reversed"},
                 camera=dict(projection=dict(type="orthographic"))
             ),
@@ -1179,6 +1220,25 @@ def interactive_cr_selection(
         model_list,
         gamma=0.12,
     )
+
+    orig_x_vals = results_df["ecological_distances_RNI"].to_numpy(dtype=float)
+    orig_y_vals = results_df[ergonomics_column].to_numpy(dtype=float)
+    orig_z_vals = results_df["cost_objective_RNI"].to_numpy(dtype=float)
+    point_visible = [True] * len(results_df)
+
+    def apply_visibility():
+        pareto_frontier.data[0].x = [x if v else None for x, v in zip(orig_x_vals, point_visible)]
+        pareto_frontier.data[0].y = [y if v else None for y, v in zip(orig_y_vals, point_visible)]
+        pareto_frontier.data[0].z = [z if v else None for z, v in zip(orig_z_vals, point_visible)]
+        pareto_frontier.data[0].text = [str(i + 1) if v else "" for i, v in enumerate(point_visible)]
+        update_selected_marker(None)
+    
+    for idx, cb in enumerate(visibility_checkboxes):
+        def toggle(change, i=idx):
+            point_visible[i] = change["new"]
+            apply_visibility()
+        
+        cb.observe(toggle, names="value")
 
     def update_selected_marker(index):
         """Draw a black marker over the selected pareto point."""
@@ -1384,12 +1444,12 @@ def interactive_cr_selection(
         )
 
     buttons = list(create_buttons())
-    print("test")
 
     return (
         interactive_layout,
         current_cable_roads_table_figure,
         layout_overview_table_figure,
+        model_visibility_table,
         anchor_table_figure,
         road_anchor_table_figure,
         pareto_frontier,
