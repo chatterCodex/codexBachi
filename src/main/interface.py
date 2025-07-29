@@ -344,22 +344,19 @@ def update_tables(
 
     # update the anchor table
     anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Corresponding Cable Corridor"],
         updated_layout_costs["Anchor BHD"],
         updated_layout_costs["Anchor height"],
-        updated_layout_costs["Anchor max holding force"],
         updated_layout_costs["Anchor x coordinate"],
         updated_layout_costs["Anchor y coordinate"],
-        updated_layout_costs["Corresponding Cable Corridor"],
     ]
 
     road_anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Corresponding Cable Corridor"],
         updated_layout_costs["Road Anchor BHD"],
         updated_layout_costs["Road Anchor height"],
-        updated_layout_costs["Road Anchor max holding force"],
         updated_layout_costs["Road Anchor x coordinate"],
         updated_layout_costs["Road Anchor y coordinate"],
-        updated_layout_costs["Corresponding Cable Corridor"],
-        updated_layout_costs["Road Anchor Angle of Attack"].astype(int),
     ]
 
     style_table(current_cable_roads_table_figure)
@@ -400,22 +397,19 @@ def update_tables_no_layout(
     ]
 
     anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Corresponding Cable Corridor"],
         updated_layout_costs["Anchor BHD"],
         updated_layout_costs["Anchor height"],
-        updated_layout_costs["Anchor max holding force"],
         updated_layout_costs["Anchor x coordinate"],
         updated_layout_costs["Anchor y coordinate"],
-        updated_layout_costs["Corresponding Cable Corridor"],
     ]
 
     road_anchor_table_figure.data[0].cells.values = [
+        updated_layout_costs["Corresponding Cable Corridor"],
         updated_layout_costs["Road Anchor BHD"],
         updated_layout_costs["Road Anchor height"],
-        updated_layout_costs["Road Anchor max holding force"],
         updated_layout_costs["Road Anchor x coordinate"],
         updated_layout_costs["Road Anchor y coordinate"],
-        updated_layout_costs["Corresponding Cable Corridor"],
-        updated_layout_costs["Road Anchor Angle of Attack"].astype(int),
     ]
 
     style_table(current_cable_roads_table_figure)
@@ -945,13 +939,11 @@ def interactive_cr_selection(
 
     # anchor table
     anchor_columns = [
-        "BHD (cm)",
-        "Height (m)",
-        "Max. supported force (N)",
-        "X coordinate",
-        "Y coordinate",
-        "Corresponding cable corridor",
-        "Attack angle skyline (°)",
+        "Seiltrassen Nummer",
+        "BHD [cm]",
+        "Height [m]",
+        "X-Koordinate",
+        "Y-Koordinate",
     ]
     anchor_df = pd.DataFrame(columns=anchor_columns)
     anchor_table_figure = go.FigureWidget(
@@ -969,7 +961,7 @@ def interactive_cr_selection(
         ]
     )
     anchor_table_figure.update_layout(
-        title="Anchor Information",
+        title="Endmast Informationen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
@@ -991,7 +983,7 @@ def interactive_cr_selection(
         ]
     )
     road_anchor_table_figure.update_layout(
-        title="Anchor Information",
+        title="Endmast Informationen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
     )
