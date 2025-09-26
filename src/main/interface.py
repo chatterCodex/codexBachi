@@ -3,56 +3,69 @@ import numpy as np
 
 import plotly.graph_objects as go
 import plotly.express as px
-from ipywidgets.widgets import Button, Layout, Checkbox, HBox, VBox, Label
+from ipywidgets import Button, Layout, Checkbox, HBox, VBox, Label, HTML
+from IPython.display import display as nb_display, HTML as NBHTML
 
 from src.main import geometry_operations, plotting_3d
 
 
-def get_zebra_fill(n_rows: int, n_cols: int) -> list:
-    """Return alternating row colors for tables."""
-    row_colors = [
-        "rgb(217, 217, 217)" if i % 2 == 1 else "rgba(139, 255, 129, 0.12)"
-        for i in range(n_rows)
-    ]
+# ---------- Theming helpers ----------
+
+BG_GREY = "rgb(217, 217, 217)"
+GREEN_ALT = "rgba(139, 255, 129, 0.12)"  # 12% green
+WHITE = "white"
+
+
+def get_zebra_fill_white_first(n_rows: int, n_cols: int) -> list:
+    """Return alternating row colors for tables starting with GREEN, then WHITE, etc."""
+    row_colors = [WHITE if i % 2 == 1 else GREEN_ALT for i in range(n_rows)]
     return [row_colors for _ in range(n_cols)]
+
+
+def _pad_headers(values):
+    """Add lightweight visual margin around header titles."""
+    def pad(v):
+        return f"\u00A0{v}\u00A0"
+    return [pad(v) for v in values]
+
 
 def style_table(table: go.FigureWidget) -> None:
     """Apply consistent styling and zebra stripes to a plotly table."""
-
     if not table.data:
         return
 
     tbl = table.data[0]
-
     if not hasattr(tbl, "cells") or not hasattr(tbl, "header"):
         return
 
-    values = getattr(tbl.cells, "values", None)
+    # Header: WHITE background, padded titles, taller row
+    header_vals = getattr(tbl.header, "values", [])
+    if header_vals:
+        tbl.header.values = _pad_headers(header_vals)
 
-    if not values or len(values) == 0 or len(values[0]) == 0:
-        tbl.header.update(
-            fill_color="rgb(217, 217, 217)",
-            line_color="rgba(0, 0, 0, 0)",
-            align="center",
-            font=dict(color="black", size=12, family="Arial"),
-        )
-        return
-    
-    n_rows = len(values[0])
-    n_cols = len(values)
     tbl.header.update(
-        fill_color="rgb(217, 217, 217)",
+        fill_color=WHITE,
         line_color="rgba(0, 0, 0, 0)",
         align="center",
-        font=dict(color = "black", family = "Arial"),
+        font=dict(color="black", size=12, family="Arial"),
+        height=34,
     )
 
+    # Cells styled with zebra pattern (WHITE first)
+    values = getattr(tbl.cells, "values", None)
+    if not values or len(values) == 0:
+        return
+
+    n_rows = len(values[0]) if isinstance(values[0], (list, tuple, np.ndarray, pd.Series)) else 0
+    n_cols = len(values)
     tbl.cells.update(
-        fill_color=get_zebra_fill(n_rows, n_cols),
+        fill_color=get_zebra_fill_white_first(n_rows, n_cols),
         line_color=[["rgba(0, 0, 0, 0)"] * n_rows for _ in range(n_cols)],
         align="center",
-        font=dict(color = "black", family = "Arial"),
+        font=dict(color="black", family="Arial"),
+        height=26,
     )
+
 
 def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indices=None, display_names=None):
     # create a trace for the trees
@@ -70,6 +83,7 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
         name="Trees",
         customdata=forest_area_3.harvesteable_trees_gdf["BHD"],
         hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata} cm<extra></extra>",
+        showlegend=False,
     )
 
     if selected_indices is None:
@@ -77,12 +91,11 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
 
     if display_names is None:
         display_names = selected_indices
-    
+
     df = forest_area_3.line_gdf.loc[selected_indices]
 
     # Create traces for each line
     individual_lines = []
-
     for display, (idx, row) in zip(display_names, df.iterrows()):
         line = row.geometry
         # sample multiple points along the line so hovering works anywhere
@@ -101,17 +114,18 @@ def create_trees_and_lines_traces(forest_area_3, transparent_line, selected_indi
                 y=y_coords,
                 mode="lines",
                 line=transparent_line,
-                name=str(display),
-                meta=int(idx),
+                name=str(display),  # display number
+                meta=int(idx),      # real index
                 legendgroup=str(display),
+                showlegend=True,
             )
         )
 
     return trees, individual_lines
 
+
 def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_display, selected_indices=None):
     """Create scatter traces and connecting lines for anchor trees."""
-
     if selected_indices is None:
         selected_indices = list(forest_area_3.line_gdf.index)
 
@@ -122,77 +136,60 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
 
     for idx in selected_indices:
         row = forest_area_3.line_gdf.loc[idx]
-        # print("\n")
-        # print(idx, row)
 
         line = row.geometry
         start_pt = line.coords[0]
         end_pt = line.coords[-1]
-
-        print(row["Cable Road Object"])
-
-        anchor_df = row.tree_anchor_support_trees
-
-        if isinstance(anchor_df, dict) and "features" in anchor_df:
-            anchor_iter = anchor_df["features"]
-        elif isinstance(anchor_df, pd.DataFrame):
-            anchor_iter =anchor_df.to_dict('records')
-        else:
-            anchor_iter = []
-
+        anchor_df = row.end_anchor_tree
         color = color_map[idx]
         display_idx = real_to_display[idx]
 
-        for anchor in anchor_iter:
-            # print("Anchor")
-            print(anchor)
-            properties = anchor.get("properties", anchor)
-            ex = round(properties["x"], 2)
-            ey = round(properties["y"], 2)
+        ex = round(float(anchor_df.loc["x"]), 2)
+        ey = round(float(anchor_df.loc["y"]), 2)
 
-            tail_markers.append(
-                go.Scatter(
-                    x=[ex],
-                    y=[ey],
-                    mode="markers",
-                    marker=dict(color=color, symbol="triangle-up", size=10),
-                    showlegend=False,
-                    name=f"Tail Anchor {display_idx}",
-                    customdata=[[int(properties["BHD"]), idx]],
-                    hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
-                    meta=int(idx),
-                    legendgroup=str(display_idx),
-                )
+        tail_markers.append(
+            go.Scatter(
+                x=[ex],
+                y=[ey],
+                mode="markers",
+                marker=dict(color=color, symbol="triangle-up", size=10),
+                showlegend=False,
+                name=f"Tail Anchor {display_idx}",
+                customdata=[[int(anchor_df.loc["BHD"]), idx]],
+                hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
+                meta=int(idx),
+                legendgroup=str(display_idx),
             )
+        )
 
-            tail_lines.append(
-                go.Scatter(
-                    x=[end_pt[0], ex],
-                    y=[end_pt[1], ey],
-                    mode="lines",
-                    line=dict(color=color, dash="dot", width=1),
-                    showlegend=False,
-                    hoverinfo="skip",
-                    meta=int(idx),
-                    legendgroup=str(display_idx),
-                    visible=True,
-                )
+        tail_lines.append(
+            go.Scatter(
+                x=[end_pt[0], ex],
+                y=[end_pt[1], ey],
+                mode="lines",
+                line=dict(color=color, dash="dot", width=1),
+                showlegend=False,
+                hoverinfo="skip",
+                meta=int(idx),
+                legendgroup=str(display_idx),
+                visible=True,
             )
+        )
 
         road_anchor_df = row.road_anchor_tree_series
 
-        # Ensure road_anchor_df is a DataFrame
-        if isinstance(road_anchor_df, dict) and "features" in road_anchor_df:
+        # Ensure road_anchor_df is iterable: include ALL anchors to avoid cropping
+        if isinstance(road_anchor_df, pd.DataFrame):
+            road_anchor_iter = road_anchor_df.to_dict("records")
+        elif isinstance(road_anchor_df, dict) and "features" in road_anchor_df:
             road_anchor_iter = road_anchor_df["features"]
-        elif isinstance(road_anchor_df, pd.DataFrame):
-            road_anchor_iter = road_anchor_df.to_dict('records')
         else:
             road_anchor_iter = []
 
         for road_anchor in road_anchor_iter:
             properties = road_anchor.get("properties", road_anchor)
-            rx = round(properties["x"], 2)
-            ry = round(properties["y"], 2)
+            rx = round(float(properties.get("x", 0)), 2)
+            ry = round(float(properties.get("y", 0)), 2)
 
             road_markers.append(
                 go.Scatter(
@@ -202,7 +199,7 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
                     marker=dict(color=color, symbol="triangle-down", size=10),
                     showlegend=False,
                     name=f"Road Anchor {display_idx}",
-                    customdata=[[int(properties["BHD"]), idx]],
+                    customdata=[[int(properties.get("BHD", 0)), idx]],
                     hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>BHD: %{customdata[0]} cm<extra></extra>",
                     meta=int(idx),
                     legendgroup=str(display_idx),
@@ -226,6 +223,20 @@ def create_anchor_traces(forest_area_3, transparent_line, color_map, real_to_dis
     return tail_markers, tail_lines, road_markers, road_lines
 
 
+def _toggle_table(fig: go.FigureWidget, visible: bool, ncols: int = 0):
+    """Hide/show the plotly table and optionally display a placeholder message."""
+    if fig.data:
+        fig.data[0].visible = visible
+    if visible:
+        fig.update_layout(annotations=[])
+    else:
+        if ncols and fig.data:
+            try:
+                fig.data[0].cells.values = [[] for _ in range(ncols)]
+            except Exception:
+                pass
+
+
 def update_interactive_based_on_indices(
     current_cable_roads_table_figure,
     current_cable_roads_table,
@@ -239,16 +250,14 @@ def update_interactive_based_on_indices(
     model_list,
     transparent_line,
     solid_line,
+    real_to_display,
+    precomputed=None,
 ):
     """
-    Function to update the interactive layout based on the current indices as well as the corresponding tables
+    Update the interactive layout + tables based on the selected real indices.
     """
-
-    # first set all traces to lightgrey and hide them
-    interactive_layout.update_traces(line=transparent_line)
-
-    # and update the list of current indices to the new ones as well as the layout
-    update_tables_no_layout(
+    # update the tables (no overview table here) and get metrics once
+    updated_layout_costs = update_tables_no_layout(
         current_cable_roads_table_figure,
         current_cable_roads_table,
         anchor_table_figure,
@@ -257,8 +266,14 @@ def update_interactive_based_on_indices(
         interactive_layout,
         forest_area_3,
         model_list,
+        real_to_display,
+        precomputed=precomputed,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
+    # recolor with already-computed volumes for fast hover; hide unselected but keep in legend
+    update_line_colors_by_indices(
+        current_indices, interactive_layout, color_map, forest_area_3, model_list, real_to_display,
+        volumes=updated_layout_costs.get("Wood Volume per Cable Corridor (m3)"), hide_unselected=True
+    )
 
 
 def update_colors_and_tables(
@@ -272,11 +287,11 @@ def update_colors_and_tables(
     color_map,
     forest_area_3,
     model_list,
+    real_to_display,
+    precomputed=None,
 ):
-    """
-    Wrapper function to update both the colors of the lines and the tables
-    """
-    update_tables(
+    """Wrapper to update both the colors of the lines and the tables."""
+    updated_layout_costs = update_tables(
         current_cable_roads_table_figure,
         current_cable_roads_table,
         layout_overview_table_figure,
@@ -286,8 +301,14 @@ def update_colors_and_tables(
         interactive_layout,
         forest_area_3,
         model_list,
+        real_to_display,
+        precomputed=precomputed,
     )
-    update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
+    update_line_colors_by_indices(
+        current_indices, interactive_layout, color_map, forest_area_3, model_list, real_to_display,
+        volumes=updated_layout_costs.get("Wood Volume per Cable Corridor (m3)"),
+        hide_unselected=True
+    )
 
 
 def update_tables(
@@ -300,34 +321,32 @@ def update_tables(
     interactive_layout,
     forest_area_3,
     model_list,
+    real_to_display,
+    precomputed=None,
 ):
     """
-    Function to update both tables with the new current_indices based on the selected lines
+    Update all tables with the new selection.
     """
-
-    # and update the dataframe showing the computed costs
-    updated_layout_costs = update_layout_overview(
-        current_indices, forest_area_3, model_list
-    )
+    # update the dataframe showing the computed costs
+    updated_layout_costs = update_layout_overview(current_indices, forest_area_3, model_list, precomputed=precomputed)
 
     layout_overview_table_figure.data[0].cells.values = [
         updated_layout_costs["Total Cable Corridor Costs (€)"],
         updated_layout_costs["Setup and Takedown, Prod. Costs (€)"],
         updated_layout_costs["Ecol. Penalty"],
         updated_layout_costs["Ergon. Penalty"],
-        [current_indices],
+        [[real_to_display.get(int(i), int(i)) for i in current_indices]],  # filtered numbers
         updated_layout_costs["Max lateral Yarding Distance (m)"],
         updated_layout_costs["Average lateral Yarding Distance (m)"],
+        int(np.mean(updated_layout_costs["Supports Amount"])) if updated_layout_costs.get("Supports Amount") else 0,
         updated_layout_costs["Cost per m3 (€)"],
         updated_layout_costs["Volume per Meter (m3/m)"],
     ]
 
-    # set the current_cable_roads_table dataframe rows to show only these CRs
-    subset = current_cable_roads_table.loc[
-        current_cable_roads_table.index.isin(current_indices)
-    ]
+    # Current cable roads table (only selected CRs)
+    subset = current_cable_roads_table.loc[current_cable_roads_table.index.isin(current_indices)]
 
-    corridor_numbers = subset.index.astype(int)
+    corridor_numbers = [real_to_display.get(int(i), int(i)) for i in subset.index]
     line_costs = subset["line_cost"].values
     line_lengths = subset["line_length"].values
 
@@ -335,6 +354,14 @@ def update_tables(
         "/" if len(h) == 0 else ", ".join(map(lambda x: str(int(x)), h))
         for h in updated_layout_costs["Supports Height (m)"]
     ]
+
+    # show/hide detail tables by selection
+    if len(current_indices) == 0:
+        _toggle_table(current_cable_roads_table_figure, False, 9)
+        _toggle_table(road_anchor_table_figure, False, 5)
+    else:
+        _toggle_table(current_cable_roads_table_figure, True)
+        _toggle_table(road_anchor_table_figure, True)
 
     current_cable_roads_table_figure.data[0].cells.values = [
         corridor_numbers,
@@ -345,26 +372,28 @@ def update_tables(
         support_heights,
         updated_layout_costs["Average Tree Height (m)"],
         updated_layout_costs["Max Yarding Distance per Cable Corridor (m)"],
-        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"]
+        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"],
     ]
 
-    # as well as the colour of the corresponding trees
-    interactive_layout.data[0].marker.color = [
-        px.colors.qualitative.Plotly[integer]
-        for integer in updated_layout_costs["Tree to Cable Corridor Assignment"]
-    ]
+    # color the trees by assignment
+    if len(updated_layout_costs["Tree to Cable Corridor Assignment"]) == len(forest_area_3.harvesteable_trees_gdf):
+        interactive_layout.data[0].marker.color = [
+            px.colors.qualitative.Plotly[integer]
+            for integer in updated_layout_costs["Tree to Cable Corridor Assignment"]
+        ]
 
-    # update the anchor table
+    # End mast table
     anchor_table_figure.data[0].cells.values = [
-        updated_layout_costs["Corresponding Cable Corridor"],
+        [real_to_display.get(int(i), int(i)) for i in updated_layout_costs["Corresponding Cable Corridor"]],
         updated_layout_costs["Anchor BHD"],
         updated_layout_costs["Anchor height"],
         updated_layout_costs["Anchor x coordinate"],
         updated_layout_costs["Anchor y coordinate"],
     ]
 
+    # Road anchor table
     road_anchor_table_figure.data[0].cells.values = [
-        updated_layout_costs["Corresponding Cable Corridor"],
+        [real_to_display.get(int(i), int(i)) for i in updated_layout_costs["Corresponding Cable Corridor"]],
         updated_layout_costs["Road Anchor BHD"],
         updated_layout_costs["Road Anchor height"],
         updated_layout_costs["Road Anchor x coordinate"],
@@ -376,6 +405,9 @@ def update_tables(
     style_table(anchor_table_figure)
     style_table(road_anchor_table_figure)
 
+    return updated_layout_costs
+
+
 def update_tables_no_layout(
     current_cable_roads_table_figure,
     current_cable_roads_table,
@@ -385,16 +417,15 @@ def update_tables_no_layout(
     interactive_layout,
     forest_area_3,
     model_list,
+    real_to_display,
+    precomputed=None,
 ):
     """Update tables without altering the overview table."""
+    updated_layout_costs = update_layout_overview(current_indices, forest_area_3, model_list, precomputed=precomputed)
 
-    updated_layout_costs = update_layout_overview(current_indices, forest_area_3, model_list)
+    subset = current_cable_roads_table.loc[current_cable_roads_table.index.isin(current_indices)]
 
-    subset = current_cable_roads_table.loc[
-        current_cable_roads_table.index.isin(current_indices)
-    ]
-
-    corridor_numbers = subset.index.astype(int)
+    corridor_numbers = [real_to_display.get(int(i), int(i)) for i in subset.index]
     line_costs = subset["line_cost"].values
     line_lengths = subset["line_length"].values
 
@@ -402,6 +433,13 @@ def update_tables_no_layout(
         "/" if len(h) == 0 else ", ".join(map(lambda x: str(int(x)), h))
         for h in updated_layout_costs["Supports Height (m)"]
     ]
+
+    if len(current_indices) == 0:
+        _toggle_table(current_cable_roads_table_figure, False, 9)
+        _toggle_table(road_anchor_table_figure, False, 5)
+    else:
+        _toggle_table(current_cable_roads_table_figure, True)
+        _toggle_table(road_anchor_table_figure, True)
 
     current_cable_roads_table_figure.data[0].cells.values = [
         corridor_numbers,
@@ -412,16 +450,17 @@ def update_tables_no_layout(
         support_heights,
         updated_layout_costs["Average Tree Height (m)"],
         updated_layout_costs["Max Yarding Distance per Cable Corridor (m)"],
-        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"]
+        updated_layout_costs["Average Yarding Distance per Cable Corridor (m)"],
     ]
 
-    interactive_layout.data[0].marker.color = [
-        px.colors.qualitative.Plotly[i]
-        for i in updated_layout_costs["Tree to Cable Corridor Assignment"]
-    ]
+    if len(updated_layout_costs["Tree to Cable Corridor Assignment"]) == len(forest_area_3.harvesteable_trees_gdf):
+        interactive_layout.data[0].marker.color = [
+            px.colors.qualitative.Plotly[i]
+            for i in updated_layout_costs["Tree to Cable Corridor Assignment"]
+        ]
 
     anchor_table_figure.data[0].cells.values = [
-        updated_layout_costs["Corresponding Cable Corridor"],
+        [real_to_display.get(int(i), int(i)) for i in updated_layout_costs["Corresponding Cable Corridor"]],
         updated_layout_costs["Anchor BHD"],
         updated_layout_costs["Anchor height"],
         updated_layout_costs["Anchor x coordinate"],
@@ -429,7 +468,7 @@ def update_tables_no_layout(
     ]
 
     road_anchor_table_figure.data[0].cells.values = [
-        updated_layout_costs["Corresponding Cable Corridor"],
+        [real_to_display.get(int(i), int(i)) for i in updated_layout_costs["Corresponding Cable Corridor"]],
         updated_layout_costs["Road Anchor BHD"],
         updated_layout_costs["Road Anchor height"],
         updated_layout_costs["Road Anchor x coordinate"],
@@ -439,6 +478,8 @@ def update_tables_no_layout(
     style_table(current_cable_roads_table_figure)
     style_table(anchor_table_figure)
     style_table(road_anchor_table_figure)
+
+    return updated_layout_costs
 
 
 def create_contour_traces(forest_area_3):
@@ -465,21 +506,26 @@ def create_contour_traces(forest_area_3):
     return data
 
 
-def update_layout_overview(indices, forest_area_3, model_list) -> dict:
+def update_layout_overview(indices, forest_area_3, model_list, precomputed=None) -> dict:
     """
-    Function to update the cost dataframe with the updated costs for the new configuration based on the selected lines
-    Returns distance_trees_to_lines, productivity_cost_overall, line_cost, total_cost, tree_to_line_assignment
+    Compute metrics for the given selection of cable corridors (real indices).
+    Uses optional precomputed distance matrices for speed.
     """
-
     rot_line_gdf = forest_area_3.line_gdf[forest_area_3.line_gdf.index.isin(indices)]
 
-    # Create a matrix with the distance between every tree and line and the distance between the support (beginning of the CR) and the carriage (cloests point on the CR to the tree)
-    (
-        distance_tree_line,
-        distance_carriage_support,
-    ) = geometry_operations.compute_distances_facilities_clients(
-        forest_area_3.harvesteable_trees_gdf, rot_line_gdf
-    )
+    # Precompute distances once and slice -> big speedup
+    if precomputed is not None and len(indices) > 0:
+        full_idx = forest_area_3.line_gdf.index
+        cols = [int(np.where(full_idx == i)[0][0]) for i in indices]
+        distance_tree_line = precomputed[0][:, cols]
+        distance_carriage_support = precomputed[1][:, cols]
+    else:
+        (
+            distance_tree_line,
+            distance_carriage_support,
+        ) = geometry_operations.compute_distances_facilities_clients(
+            forest_area_3.harvesteable_trees_gdf, rot_line_gdf
+        )
 
     # assign all trees to their closest line
     try:
@@ -489,46 +535,46 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
         distance_trees_to_selected_lines = distance_tree_line[
             range(len(tree_to_line_assignment)), tree_to_line_assignment
         ]
-        distance_trees_to_lines_sum = sum(distance_trees_to_selected_lines)
-    except:
-        tree_to_line_assignment = [1 for i in range(len(distance_tree_line))]
-        distance_trees_to_lines_sum = sum(distance_tree_line)
+    except Exception:
+        tree_to_line_assignment = [0 for _ in range(len(forest_area_3.harvesteable_trees_gdf))]
         distance_trees_to_selected_lines = []
 
     # compute the productivity cost
-    selected_prod_cost = model_list[0].productivity_cost[:, indices]
+    if len(indices) > 0:
+        selected_prod_cost = model_list[0].productivity_cost[:, indices]
+    else:
+        selected_prod_cost = np.zeros_like(model_list[0].productivity_cost[:, :1])
+
     productivity_cost_overall = 0
     for index, val in enumerate(tree_to_line_assignment):
+        val = min(val, selected_prod_cost.shape[1] - 1)  # guard
         productivity_cost_overall += selected_prod_cost[index][val]
 
     # sum of wood volume per CR
-    # here we need to compute the sum of wood per tree to line assignment to return this for the CR table
     grouped_class_indices = [
         np.nonzero(tree_to_line_assignment == label)[0]
-        for label in range(len(rot_line_gdf))
+        for label in range(max(1, len(rot_line_gdf)))
     ]
     wood_volume_per_cr = [
         int(
             sum(
-                forest_area_3.harvesteable_trees_gdf.iloc[grouped_indices][
-                    "cubic_volume"
-                ]
+                forest_area_3.harvesteable_trees_gdf.iloc[grouped_indices]["cubic_volume"]
             )
         )
         for grouped_indices in grouped_class_indices
-    ]
+    ][: len(rot_line_gdf)]
 
-    # get the average tree size per CR
+    # average tree size per CR
     average_tree_size_per_cr = [
         round(
-            sum(forest_area_3.harvesteable_trees_gdf.iloc[grouped_indices]["h"])
-            / len(grouped_indices),
+            sum(forest_area_3.harvesteable_trees_gdf.iloc[grouped_indices]["h"]) / len(grouped_indices),
             2,
         )
+        if len(grouped_indices) > 0 else 0
         for grouped_indices in grouped_class_indices
-    ]
+    ][: len(rot_line_gdf)]
 
-    # get the height and amount of supports
+    # supports
     supports_height = [
         (
             [
@@ -542,11 +588,11 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
     ]
     supports_amount = [len(heights) for heights in supports_height]
 
-    # compute yarding distances per cable corridor
+    # yarding distances per CR
     max_yarding_distance_per_cr = []
     average_yarding_distance_per_cr = []
-    for line_idx, grouped_indices in enumerate(grouped_class_indices):
-        if len(grouped_indices) == 0:
+    for line_idx, grouped_indices in enumerate(grouped_class_indices[: len(rot_line_gdf)]):
+        if len(grouped_indices) == 0 or len(indices) == 0:
             max_yarding_distance_per_cr.append(0)
             average_yarding_distance_per_cr.append(0)
         else:
@@ -554,104 +600,109 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
             max_yarding_distance_per_cr.append(int(max(dists)))
             average_yarding_distance_per_cr.append(int(np.mean(dists)))
 
-    # get the tail spar anchor
+    # tail spar (end mast)
     endmast_height_list = []
     endmast_BHD_list = []
     endmast_max_holding_force_list = []
     endmast_x_list = []
     endmast_y_list = []
-    # get information about the Endmast - height, BHD,
-    for tree_anchor_support_tree in rot_line_gdf.tree_anchor_support_trees:
-        endmast = tree_anchor_support_tree.iloc[0]
-        endmast_height_list.append(int(endmast["h"]))
-        endmast_BHD_list.append(int(endmast["BHD"]))
-        endmast_max_holding_force_list.append(int(endmast["max_holding_force"]))
-        endmast_x_list.append(round(endmast["x"], 2))
-        endmast_y_list.append(round(endmast["y"], 2))
+    for end_support_tree in rot_line_gdf.end_support_tree:
+        endmast_height_list.append(int(end_support_tree["h"]))
+        endmast_BHD_list.append(int(end_support_tree["BHD"]))
+        endmast_max_holding_force_list.append(
+            int(end_support_tree["max_holding_force"])
+        )
+        endmast_x_list.append(round(end_support_tree["x"], 2))
+        endmast_y_list.append(round(end_support_tree["y"], 2))
 
+    # road anchor
     road_anchor_height_list = []
     road_anchor_BHD_list = []
     road_anchor_max_holding_force_list = []
     road_anchor_x_list = []
     road_anchor_y_list = []
-    # and do the same for the road side anchor
-    for each_road_anchor in rot_line_gdf.road_anchor_tree_series:
-        road_anchor = each_road_anchor.sample(n=1)
-        # road_anchor = each_road_anchor.iloc[
-        #     0  # each_road_anchor["BHD"].idxmax()
-        # ]  # choose the anchor with the largest BHD
-        road_anchor_height_list.append(int(road_anchor["h"]))
-        road_anchor_BHD_list.append(int(road_anchor["BHD"]))
-        road_anchor_max_holding_force_list.append(int(road_anchor["max_holding_force"]))
-        road_anchor_x_list.append(round(road_anchor["x"], 2))
-        road_anchor_y_list.append(round(road_anchor["y"], 2))
+    for end_support_tree in rot_line_gdf.end_support_tree:
+        endmast_height_list.append(int(end_support_tree["h"]))
+        endmast_BHD_list.append(int(end_support_tree["BHD"]))
+        endmast_max_holding_force_list.append(
+            int(end_support_tree["max_holding_force"])
+        )
+        endmast_x_list.append(round(end_support_tree["x"], 2))
+        endmast_y_list.append(round(end_support_tree["y"], 2))
 
-    # get the max and average yarding distance
-    max_yarding_distance = max(distance_trees_to_selected_lines)
-    average_yarding_distance = np.mean(distance_trees_to_selected_lines)
+    # global yarding distances
+    max_yarding_distance = int(max(distance_trees_to_selected_lines)) if len(distance_trees_to_selected_lines) else 0
+    average_yarding_distance = int(np.mean(distance_trees_to_selected_lines)) if len(distance_trees_to_selected_lines) else 0
 
-    line_cost = sum(rot_line_gdf["line_cost"])
+    line_cost = int(sum(rot_line_gdf["line_cost"])) if len(rot_line_gdf) else 0
 
-    # total cost = # get the total cable road costs
-    total_cable_road_costs = line_cost + productivity_cost_overall
+    # total cost
+    total_cable_road_costs = int(line_cost + productivity_cost_overall)
 
-    cost_per_m3 = total_cable_road_costs / sum(wood_volume_per_cr)
+    cost_per_m3 = round(total_cable_road_costs / max(1, sum(wood_volume_per_cr) if len(wood_volume_per_cr) else 1), 2)
 
-    # calulate the environmental impact of each line beyond 10m lateral distance
-    ecological_penalty_threshold = 10
-    ecological_penalty_lateral_distances = np.where(
-        distance_tree_line > ecological_penalty_threshold,
-        distance_tree_line - ecological_penalty_threshold,
-        0,
-    )
-
-    sum_eco_distances = sum(
-        [
-            ecological_penalty_lateral_distances[j][i]
-            for i, j in zip(
-                tree_to_line_assignment,
-                range(len(ecological_penalty_lateral_distances)),
+    # ecological penalty
+    if len(indices) > 0:
+        ecological_penalty_threshold = 10
+        ecological_penalty_lateral_distances = np.where(
+            distance_tree_line > ecological_penalty_threshold,
+            distance_tree_line - ecological_penalty_threshold,
+            0,
+        )
+        sum_eco_distances = int(
+            sum(
+                [
+                    ecological_penalty_lateral_distances[j][i]
+                    for i, j in zip(
+                        tree_to_line_assignment,
+                        range(len(ecological_penalty_lateral_distances)),
+                    )
+                ]
             )
-        ]
-    )
+        )
+    else:
+        sum_eco_distances = 0
 
-    # double all distances greater than penalty_treshold
-    ergonomics_penalty_treshold = 15
-    ergonomic_penalty_lateral_distances = np.where(
-        distance_tree_line > ergonomics_penalty_treshold,
-        (distance_tree_line - ergonomics_penalty_treshold) * 2,
-        0,
-    )
-    sum_ergo_distances = sum(
-        [
-            ergonomic_penalty_lateral_distances[j][i]
-            for i, j in zip(
-                tree_to_line_assignment,
-                range(len(ergonomic_penalty_lateral_distances)),
+    # ergonomics penalty (double beyond threshold)
+    if len(indices) > 0:
+        ergonomics_penalty_treshold = 15
+        ergonomic_penalty_lateral_distances = np.where(
+            distance_tree_line > ergonomics_penalty_treshold,
+            (distance_tree_line - ergonomics_penalty_treshold) * 2,
+            0,
+        )
+        sum_ergo_distances = int(
+            sum(
+                [
+                    ergonomic_penalty_lateral_distances[j][i]
+                    for i, j in zip(
+                        tree_to_line_assignment,
+                        range(len(ergonomic_penalty_lateral_distances)),
+                    )
+                ]
             )
-        ]
-    )
+        )
+    else:
+        sum_ergo_distances = 0
 
-    # wood volume per running meter of cable road
-    # get the total length of the cable road
-    total_cable_road_length = sum(rot_line_gdf["line_length"])
-    volume_per_running_meter = sum(wood_volume_per_cr) / total_cable_road_length
+    # volume per running meter
+    total_cable_road_length = float(sum(rot_line_gdf["line_length"])) if len(rot_line_gdf) else 0.0
+    volume_per_running_meter = round((sum(wood_volume_per_cr) / total_cable_road_length) if total_cable_road_length else 0.0, 2)
 
-    # return a dict of the results and convert all results to ints for readability
     return {
         "Wood Volume per Cable Corridor (m3)": wood_volume_per_cr,
-        "Total Cable Corridor Costs (€)": int(total_cable_road_costs),
-        "Setup and Takedown, Prod. Costs (€)": f"{int(line_cost)} / {int(productivity_cost_overall)}",
-        "Ecol. Penalty": int(sum_eco_distances),
-        "Ergon. Penalty": int(sum_ergo_distances),
-        "Tree to Cable Corridor Assignment": tree_to_line_assignment,
+        "Total Cable Corridor Costs (€)": total_cable_road_costs,
+        "Setup and Takedown, Prod. Costs (€)": f"{line_cost} / {int(productivity_cost_overall)}",
+        "Ecol. Penalty": sum_eco_distances,
+        "Ergon. Penalty": sum_ergo_distances,
+        "Tree to Cable Corridor Assignment": tree_to_line_assignment if len(indices) > 0 else [0]*len(forest_area_3.harvesteable_trees_gdf),
         "Supports Height (m)": supports_height,
         "Supports Amount": supports_amount,
-        "Max lateral Yarding Distance (m)": int(max_yarding_distance),
-        "Average lateral Yarding Distance (m)": int(average_yarding_distance),
-        "Cost per m3 (€)": round(cost_per_m3, 2),
+        "Max lateral Yarding Distance (m)": max_yarding_distance,
+        "Average lateral Yarding Distance (m)": average_yarding_distance,
+        "Cost per m3 (€)": cost_per_m3,
         "Average Tree Height (m)": average_tree_size_per_cr,
-        "Volume per Meter (m3/m)": round(volume_per_running_meter, 2),
+        "Volume per Meter (m3/m)": volume_per_running_meter,
         "Max Yarding Distance per Cable Corridor (m)": max_yarding_distance_per_cr,
         "Average Yarding Distance per Cable Corridor (m)": average_yarding_distance_per_cr,
         "Anchor height": endmast_height_list,
@@ -659,52 +710,60 @@ def update_layout_overview(indices, forest_area_3, model_list) -> dict:
         "Anchor max holding force": endmast_max_holding_force_list,
         "Anchor x coordinate": endmast_x_list,
         "Anchor y coordinate": endmast_y_list,
-        "Corresponding Cable Corridor": indices,
+        "Corresponding Cable Corridor": indices,  # real indices
         "Road Anchor height": road_anchor_height_list,
         "Road Anchor BHD": road_anchor_BHD_list,
         "Road Anchor max holding force": road_anchor_max_holding_force_list,
         "Road Anchor x coordinate": road_anchor_x_list,
         "Road Anchor y coordinate": road_anchor_y_list,
-        "Road Anchor Angle of Attack": rot_line_gdf[
-            "angle_between_start_support_and_cr"
-        ],
-        "Tail Anchor Angle of Attack": rot_line_gdf["angle_between_end_support_and_cr"],
+        "Road Anchor Angle of Attack": rot_line_gdf["angle_between_start_support_and_cr"] if len(rot_line_gdf) else [],
+        "Tail Anchor Angle of Attack": rot_line_gdf["angle_between_end_support_and_cr"] if len(rot_line_gdf) else [],
     }
 
 
 def update_line_colors_by_indices(
-        current_indices, 
-        interactive_layout, 
-        color_map, 
-        forest_area_3=None, 
-        model_list=None,
-        hide_unselected=True):
-    """Set line colors and hover information for the currently active cable roads."""
-
+    current_indices,
+    interactive_layout,
+    color_map,
+    forest_area_3=None,
+    model_list=None,
+    real_to_display=None,
+    hide_unselected=False,
+    volumes=None,
+):
+    """Set line colors and hover information for the currently active cable roads.
+    If hide_unselected=True, hide non-used corridors from the map but keep them in the legend."""
     order = sorted(current_indices)
     palette = px.colors.qualitative.Plotly
+
     def cr_colour(idx: int) -> str:
-        return palette[order.index(idx) % len(palette)]
+        if idx in order and len(order) > 0:
+            return palette[order.index(idx) % len(palette)]
+        return "rgba(0,0,0,0.5)"
 
     current_indices = list(map(int, current_indices))
     color_transparent = "rgba(0, 0, 0, 0.4)"
     default_marker_color = "green" if not current_indices else color_transparent
 
-    volumes = None
-    if current_indices and forest_area_3 is not None and model_list is not None:
-        layout_data = update_layout_overview(current_indices, forest_area_3, model_list)
-        volumes = layout_data["Wood Volume per Cable Corridor (m3)"]
-
-    #reset traces to grey and show tem
+    # reset traces (but do not fully hide to keep legend by default)
     for trace in interactive_layout.data[2:]:
         idx = getattr(trace, "meta", None)
         if idx is None:
             continue
+        # default: demote to legendonly for lines, hide anchors
         if hasattr(trace, "line"):
             trace.line.color = color_transparent
             trace.line.width = 1 if getattr(trace.line, "dash", None) else 0.5
             trace.hovertemplate = None
-        elif trace.mode.startswith("markers"):
+            if hide_unselected:
+                # only CR polylines should become legendonly; keep dotted anchor lines fully hidden
+                if getattr(trace.line, "dash", None):
+                    trace.visible = False
+                else:
+                    trace.visible = "legendonly"
+            else:
+                trace.visible = True
+        elif getattr(trace, "mode", "").startswith("markers"):
             trace.marker.color = default_marker_color
             if "Tail Anchor" in trace.name:
                 trace.marker.symbol = "triangle-up"
@@ -712,35 +771,33 @@ def update_line_colors_by_indices(
                 trace.marker.symbol = "square"
             else:
                 trace.marker.symbol = "circle"
-        
-        if hide_unselected:
-            trace.visible = "legendonly"
-        else:
-            trace.visible = True
+            trace.visible = (False if hide_unselected else True)
 
-    # apply colors to active lines
+    # apply colors to active lines + show their anchors
     for indice in current_indices:
         color = cr_colour(indice)
         hover = None
         if volumes is not None and indice in forest_area_3.line_gdf.index:
             length = int(forest_area_3.line_gdf.loc[indice, "line_length"])
             vol = volumes[current_indices.index(indice)]
-            hover = f"Index. {indice}<br>Cable Length: {length} m<br>Wood Volume: {vol} m3"
+            disp = real_to_display.get(indice, indice) if real_to_display else indice
+            hover = f"Seiltrasse {disp}<br>Seillänge: {length} m<br>Vfm: {vol} m³"
 
         for trace in interactive_layout.data[2:]:
             if getattr(trace, "meta", None) != indice:
                 continue
 
             if hasattr(trace, "line"):
+                trace.line.color = color
+                trace.line.width = 1 if getattr(trace.line, "dash", None) else 5
+                # show selected lines; dotted anchor lines of selected CRs stay visible
                 if getattr(trace.line, "dash", None):
-                    trace.line.color = color
-                    trace.line.width = 1 
+                    trace.visible = True
                 else:
-                    trace.line.color = color
-                    trace.line.width = 5
-                trace.visible = True
-
-            elif trace.mode.startswith("markers"):
+                    trace.visible = True
+                if hover is not None and not getattr(trace.line, "dash", None):
+                    trace.hovertemplate = hover + "<extra></extra>"
+            elif getattr(trace, "mode", "").startswith("markers"):
                 trace.marker.color = color
                 if "Tail Anchor" in trace.name:
                     trace.marker.symbol = "triangle-up"
@@ -751,36 +808,123 @@ def update_line_colors_by_indices(
                 trace.visible = True
 
 
+def _build_visibility_table_widget(results_df, point_visible):
+    """
+    Hybrid 'visibility' table:
+      • Left: Plotly Table (first 4 columns) styled like the other tables
+      • Right: ipywidgets checkbox column ('Anzeigen / Ausblenden') with real interaction
+      • A shared external title bar above both so everything aligns cleanly.
+    """
+    # ---- CSS for this composite widget (scoped via classes we add below) ----
+    nb_display(NBHTML(f"""
+    <style id="visibility-table-css">
+    /* Hide Plotly modebar only for this small table */
+    .vis-plot .modebar {{ display:none !important; }}
+    /* Title bar */
+    .vis-title {{
+        font-family: Arial, sans-serif; font-weight: 600;
+        padding: 8px 30px 0 30px; color: #000;
+    }}
+    /* Align the two halves on their top edge */
+    .vis-container .widget-hbox {{ align-items: flex-start !important; }}
+    /* Right checkbox column layout and zebra */
+    .visibility-col {{
+        width: 160px;
+        margin-left: 8px;
+    }}
+    .visibility-col .v-header {{
+        background: {WHITE};
+        text-align: center;
+        font-family: Arial, sans-serif;
+        font-weight: 600;
+        height: 34px; line-height: 34px;
+        padding: 0 8px;
+        border: 0;
+    }}
+    .visibility-col .row {{
+        display:flex; align-items:center; justify-content:center;
+        height: 26px; /* match Plotly cell height */
+        padding: 0 8px;
+    }}
+    .visibility-col .row.even {{ background:{WHITE}; }}
+    .visibility-col .row.odd  {{ background:{GREEN_ALT}; }}
+    .visibility-col * {{ box-shadow:none !important; border:0 !important; }}
+    /* Remove any scrollbar arrow buttons if a notebook theme adds them */
+    .visibility-col::-webkit-scrollbar-button {{ display:none; width:0; height:0; }}
+    </style>
+    """))
+
+    ergonomics_column = (
+        "ergonomics_discances_RNI"
+        if "ergonomics_discances_RNI" in results_df.columns
+        else "ergonomics_distances_RNI"
+    )
+
+    # ---- Left side: Plotly table (no internal title/modebar) ----
+    headers_left = [
+        "Index",
+        "Kosten Optimierung",
+        "Ergonomische Optimierung",
+        "Ökologische Optimierung",
+    ]
+    index_col = [i + 1 for i in range(len(results_df))]
+    kosten_col = [int(x) for x in results_df["cost_objective_RNI"].tolist()]
+    ergo_col  = [int(x) for x in results_df[ergonomics_column].tolist()]
+    oeko_col  = [int(x) for x in results_df["ecological_distances_RNI"].tolist()]
+
+    fig_left = go.FigureWidget([
+        go.Table(
+            header=dict(
+                values=_pad_headers(headers_left),
+                fill_color=WHITE,
+                align="center",
+                line_color="darkgrey",
+                font=dict(color="black", size=12, family="Arial"),
+                height=34,
+            ),
+            # fixed widths so it feels table-like and aligns with the checkbox column
+            columnwidth=[60, 120, 150, 150],
+            cells=dict(
+                values=[index_col, kosten_col, ergo_col, oeko_col],
+                align="center",
+                height=26,
+            ),
+        )
+    ])
+    # remove internal title/margins; set grey background like other tables
+    fig_left.update_layout(
+        margin=dict(r=30, l=30, t=0, b=30),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
+    )
+    # make row heights deterministic & apply zebra
+    style_table(fig_left)
+    # mark this figure so our CSS can hide only its modebar
+    fig_left.add_class("vis-plot")
+
+    return fig_left
+
+
 def interactive_cr_selection(
     forest_area_3, model_list, optimization_result_list, results_df):
     """
     Create an interactive cable road layout visualization.
-
-    Parameters:
-    - forest_area_3: GeoDataFrame, input forest area data
-    - model_list: List, list of models
-    - optimization_result_list: List, list of optimization results
-    - results_df: DataFrame, optimization results DataFrame
-
-    Returns:
-    - Tuple containing four FigureWidgets: interactive_layout, current_cable_roads_table_figure,
-      layout_overview_table_figure, pareto_frontier
+f
+    Returns (10 items):
+      interactive_layout, current_cable_roads_table_figure, layout_overview_table_figure,
+      model_visibility_table, anchor_table_figure, road_anchor_table_figure,
+      pareto_frontier, move_left_button, move_right_button, reset_all__CRs_button
     """
     # initialize the current indices list we use to keep track of the selected lines
-    current_indices = []
-
-    # initialize the selected cr to none
-    selected_cr = 0
+    current_indices = []  # real indices
+    selected_cr = None    # real index of a single selected CR or None
 
     # define the transparent color for CRs once
     color_transparent = "rgba(0, 0, 0, 0.4)"
     transparent_line = dict(color=color_transparent, width=0.5)
     solid_line = dict(color="black", width=5)
 
-    indices_to_show = sorted(
-        {int(i) for row in results_df["selected_lines"] for i in row}
-    )
-
+    indices_to_show = sorted({int(i) for row in results_df["selected_lines"] for i in row})
     display_names = list(range(1, len(indices_to_show) + 1))
     display_to_real = dict(zip(display_names, indices_to_show))
     real_to_display = dict(zip(indices_to_show, display_names))
@@ -789,6 +933,12 @@ def interactive_cr_selection(
         idx: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
         for i, idx in enumerate(indices_to_show)
     }
+
+    # Precompute distance matrices once for performance
+    all_distance_tree_line, all_distance_carriage_support = geometry_operations.compute_distances_facilities_clients(
+        forest_area_3.harvesteable_trees_gdf, forest_area_3.line_gdf
+    )
+    precomputed = (all_distance_tree_line, all_distance_carriage_support)
 
     # create traces for the lines and trees
     trees, individual_lines = create_trees_and_lines_traces(
@@ -801,79 +951,75 @@ def interactive_cr_selection(
     # create the traces for a contour plot
     contour_traces = create_contour_traces(forest_area_3)
 
-    # create a figure from all individual scatter lines
-    tail_anchors, road_anchors, tail_anchor_lines, road_anchor_lines = create_anchor_traces(
-        forest_area_3, 
-        transparent_line, 
-        color_map, 
-        real_to_display, 
-        selected_indices=indices_to_show
+    # anchors
+    tail_anchors, tail_anchor_lines, road_anchors, road_anchor_lines = create_anchor_traces(
+        forest_area_3, transparent_line, color_map, real_to_display, selected_indices=indices_to_show
     )
 
-    # create a figure from all individual scatter lines and anchors lines
+    # interactive figure
     interactive_layout = go.FigureWidget(
         [trees, contour_traces, *individual_lines, *tail_anchor_lines, *road_anchor_lines, *tail_anchors, *road_anchors]
     )
-    update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list, hide_unselected=False)
+    # background - make the whole interface look grey (not just corners)
+    interactive_layout.update_layout(
+        title="Cable Corridor Map",
+        width=1200,
+        height=900,
+        xaxis=dict(title="X (m)"),
+        yaxis=dict(title="Y (m)"),
+        margin=dict(r=20, l=20, t=20, b=20),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
+        legend=dict(itemsizing="constant"),
+    )
 
-    # determine map extent so all anchors fit in view
+    # determine map extent from ALL line vertices + ALL anchors (tail + road)
     x_vals = []
     y_vals = []
 
+    # Lines
     for line in forest_area_3.line_gdf.geometry:
         xs, ys = line.xy
         x_vals.extend(xs)
         y_vals.extend(ys)
 
-    for anchors in forest_area_3.line_gdf.tree_anchor_support_trees:
-        if getattr(anchors, "empty", False):
-            continue
-        if isinstance(anchors, pd.DataFrame):
-            records = anchors.to_dict(orient="records")
-        else:
-            records = [anchors]
-        for record in records:
-            x_vals.append(float(record["x"]))
-            y_vals.append(float(record["y"]))
+    # All tail anchors (use DataFrames fully)
+    for anchors_df in forest_area_3.line_gdf.end_support_tree:
+        if isinstance(anchors_df, pd.DataFrame) and not anchors_df.empty:
+            x_vals.extend(list(anchors_df["x"].astype(float)))
+            y_vals.extend(list(anchors_df["y"].astype(float)))
+        elif isinstance(anchors_df, dict) and "features" in anchors_df:
+            for f in anchors_df["features"]:
+                props = f.get("properties", f)
+                x_vals.append(float(props.get("x", 0)))
+                y_vals.append(float(props.get("y", 0)))
 
-    for anchors in forest_area_3.line_gdf.road_anchor_tree_series:
-        if getattr(anchors, "empty", False):
-            continue
-        if hasattr(anchors, "sample"):
-            record = anchors.iloc[0]
-        elif isinstance(anchors, (list, tuple)):
-            record = anchors[0]
-        else:
-            records = anchors
-        x_vals.append(float(record["x"]))
-        y_vals.append(float(record["y"]))
+    # All road anchors
+    for anchors_df in forest_area_3.line_gdf.road_anchor_tree_series:
+        if isinstance(anchors_df, pd.DataFrame) and not anchors_df.empty:
+            x_vals.extend(list(anchors_df["x"].astype(float)))
+            y_vals.extend(list(anchors_df["y"].astype(float)))
+        elif isinstance(anchors_df, dict) and "features" in anchors_df:
+            for f in anchors_df["features"]:
+                props = f.get("properties", f)
+                x_vals.append(float(props.get("x", 0)))
+                y_vals.append(float(props.get("y", 0)))
 
-    margin = 10
-    x_range = [min(x_vals) - margin, max(x_vals) + margin]
-    y_range = [min(y_vals) - margin, max(y_vals) + margin]
-        
-    interactive_layout.update_layout(
-        title="Cable Corridor Map",
-        width=1200,
-        height=900,
-        xaxis=dict(title="X (m)", range=x_range),
-        yaxis=dict(title="Y (m)", range=y_range),
-        margin=dict(r=0, l=0, t=0, b=0),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-    )
+    if x_vals and y_vals:
+        margin = 10
+        x_range = [min(x_vals) - margin, max(x_vals) + margin]
+        y_range = [min(y_vals) - margin, max(y_vals) + margin]
+        interactive_layout.update_xaxes(range=x_range)
+        interactive_layout.update_yaxes(range=y_range)
 
-    # create a dataframe and push it to a figurewidget to display details about our selected lines
-    current_cable_roads_table = forest_area_3.line_gdf[
-        ["line_cost", "line_length"]
-    ].copy()
-    # current_cable_roads_table["current_wood_volume"] = pd.Series(dtype="int")
+    # current cable roads table
+    current_cable_roads_table = forest_area_3.line_gdf[["line_cost", "line_length"]].copy()
     current_cable_roads_table.loc[:, "current_wood_volume"] = pd.Series(dtype="int")
     current_cable_roads_table_figure = go.FigureWidget(
         [
             go.Table(
                 header=dict(
-                    values=[
+                    values=_pad_headers([
                         "Seiltrassen Nummer",
                         "Aufbaukosten [€]",
                         "Seillänge [m]",
@@ -883,11 +1029,12 @@ def interactive_cr_selection(
                         "Durchschnittliche Baumhöhe [m]",
                         "Max Zugseillänge [m]",
                         "Durchschnittliche Zugseillänge [m]",
-                    ],
-                    fill_color="rgb(217, 217, 217)",
+                    ]),
+                    fill_color=WHITE,
                     align="center",
                     line_color="darkgrey",
-                    font=dict(color="black", size = 12, family = "Arial")
+                    font=dict(color="black", size=12, family="Arial"),
+                    height=34,
                 ),
                 cells=dict(values=[], align="center"),
             )
@@ -897,11 +1044,13 @@ def interactive_cr_selection(
         title="Aktivierte Seiltrassen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
     )
-
     style_table(current_cable_roads_table_figure)
+    _toggle_table(current_cable_roads_table_figure, False, 9)
 
-    # and for the layout overview
+    # layout overview (Vergleich der Seiltrassenmodelle)
     layout_columns = [
         "Gesamt Kosten [€]",
         "Auf- und Abbau Kosten [€]",
@@ -916,41 +1065,45 @@ def interactive_cr_selection(
     ]
 
     all_layouts = []
-    for i, row in results_df.iterrows():
-        layout_data = update_layout_overview(row["selected_lines"], forest_area_3, model_list)
-        avg_supports = (
-            int(np.mean(layout_data["Supports Amount"]))
-            if layout_data.get("Supports Amount")
-            else 0
-        )
-        all_layouts.append([
-            i + 1,
-            layout_data["Total Cable Corridor Costs (€)"],
-            layout_data["Setup and Takedown, Prod. Costs (€)"],
-            layout_data["Ecol. Penalty"],
-            layout_data["Ergon. Penalty"],
-            layout_data["Corresponding Cable Corridor"],
-            layout_data["Max lateral Yarding Distance (m)"],
-            layout_data["Average lateral Yarding Distance (m)"],
-            avg_supports,
-            layout_data["Cost per m3 (€)"],
-            layout_data["Volume per Meter (m3/m)"],
-        ])
-
-    layout_overview_df = pd.DataFrame(
-        all_layouts,
-        columns=["Index"] + layout_columns,
+    ergonomics_column = (
+        "ergonomics_discances_RNI"
+        if "ergonomics_discances_RNI" in results_df.columns
+        else "ergonomics_distances_RNI"
     )
+    for i, row in results_df.iterrows():
+        sel = list(map(int, row["selected_lines"]))  # real indices
+        layout_data = update_layout_overview(sel, forest_area_3, model_list, precomputed=precomputed)
+        avg_supports = int(np.mean(layout_data["Supports Amount"])) if layout_data.get("Supports Amount") else 0
+        # show FILTERED (display) numbers in the overview table
+        used_lines_display = [real_to_display.get(int(idx), int(idx)) for idx in sel]
+        all_layouts.append(
+            [
+                i + 1,
+                layout_data["Total Cable Corridor Costs (€)"],
+                layout_data["Setup and Takedown, Prod. Costs (€)"],
+                layout_data["Ecol. Penalty"],
+                layout_data["Ergon. Penalty"],
+                used_lines_display,
+                layout_data["Max lateral Yarding Distance (m)"],
+                layout_data["Average lateral Yarding Distance (m)"],
+                avg_supports,
+                layout_data["Cost per m3 (€)"],
+                layout_data["Volume per Meter (m3/m)"],
+            ]
+        )
+
+    layout_overview_df = pd.DataFrame(all_layouts, columns=["Index"] + layout_columns)
 
     layout_overview_table_figure = go.FigureWidget(
         [
             go.Table(
                 header=dict(
-                    values=["Index"] + layout_columns,
-                    fill_color="rgb(217, 217, 217)",
+                    values=_pad_headers(["Index"] + layout_columns),
+                    fill_color=WHITE,
                     align="center",
                     line_color="darkgrey",
-                    font=dict(color="black", size=12, family="Arial")
+                    font=dict(color="black", size=12, family="Arial"),
+                    height=34,
                 ),
                 cells=dict(values=[layout_overview_df[col] for col in layout_overview_df.columns], align="center"),
             )
@@ -959,61 +1112,30 @@ def interactive_cr_selection(
     layout_overview_table_figure.update_layout(
         title="Vergleich der Seiltrassenmodelle",
         margin=dict(r=30, l=30, t=30, b=30),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
     )
     style_table(layout_overview_table_figure)
 
-    # table to toggle visibility of optimization results
-    visibility_headers = [
-        "Index",
-        "Kosten Optimierung",
-        "Ergonomische Optimierung",
-        "Ökologische Optimierung",
-        "Anzeigen / Ausblenden",
-    ]
-
-    ergonomics_column = (
-        "ergonomics_discances_RNI"
-        if "ergonomics_discances_RNI" in results_df.columns
-        else "ergonomics_distances_RNI"
-    )
-
-    visibility_checkboxes = []
-    visibility_rows = [HBox([Label(text=h) for h in visibility_headers])]
-
-    for i, row in results_df.iterrows():
-        cb = Checkbox(value=True)
-        visibility_checkboxes.append(cb)
-        row_widgets = HBox(
-            [
-                Label(str(i + 1)),
-                Label(str(row["cost_objective_RNI"])),
-                Label(str(row[ergonomics_column])),
-                Label(str(row["ecological_distances_RNI"])),
-                cb,
-            ]
-        )
-        visibility_rows.append(row_widgets)
-    
-    model_visibility_table = VBox(visibility_rows)
+    point_visible = [True] * len(results_df)
+    model_visibility_table =_build_visibility_table_widget(results_df, point_visible)
 
     selected_layout_row = None
 
     def highlight_layout_row(idx):
         """Highlight the selected row in the layout overview table."""
-
         nonlocal selected_layout_row
         n_rows = len(layout_overview_df)
         n_cols = len(layout_overview_df.columns)
 
-        fill_colors = get_zebra_fill(n_rows, n_cols)
+        fill_colors = get_zebra_fill_white_first(n_rows, n_cols)
         if idx is not None:
             for c in range(n_cols):
-                fill_colors[c][idx] = "rgba(255, 0, 0, 0.3)"
+                fill_colors[c][idx] = "rgba(255, 0, 0, 0.25)"
 
         layout_overview_table_figure.data[0].cells.fill.color = fill_colors
         layout_overview_table_figure.data[0].cells.line.color = [["rgba(0, 0, 0, 0)"] * n_rows for _ in range(n_cols)]
         layout_overview_table_figure.layout.shapes = []
-
         selected_layout_row = idx
 
     highlight_layout_row(None)
@@ -1031,13 +1153,14 @@ def interactive_cr_selection(
         [
             go.Table(
                 header=dict(
-                    values=anchor_columns,
-                    fill_color="rgb(217, 217, 217)",
+                    values=_pad_headers(anchor_columns),
+                    fill_color=WHITE,
                     align="center",
                     line_color="darkgrey",
-                    font=dict(color="black", size=12, family="Arial")
+                    font=dict(color="black", size=12, family="Arial"),
+                    height=34,
                 ),
-                cells=dict(values=[anchor_df.values], align="center")
+                cells=dict(values=[anchor_df.values], align="center"),
             )
         ]
     )
@@ -1045,6 +1168,8 @@ def interactive_cr_selection(
         title="Endmast Informationen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
     )
     style_table(anchor_table_figure)
 
@@ -1053,27 +1178,34 @@ def interactive_cr_selection(
         [
             go.Table(
                 header=dict(
-                    values=anchor_columns,
-                    fill_color="rgb(217, 217, 217)",
+                    values=_pad_headers(anchor_columns),
+                    fill_color=WHITE,
                     align="center",
                     line_color="darkgrey",
                     font=dict(color="black", size=12, family="Arial"),
+                    height=34,
                 ),
                 cells=dict(values=[road_anchor_df], align="center"),
             )
         ]
     )
     road_anchor_table_figure.update_layout(
-        title="Endmast Informationen",
+        title="Straßenmast Informationen",
         height=250,
         margin=dict(r=30, l=30, t=30, b=30),
+        paper_bgcolor=BG_GREY,
+        plot_bgcolor=BG_GREY,
     )
     style_table(road_anchor_table_figure)
+    _toggle_table(road_anchor_table_figure, False, 5)
 
+    # --- Handlers ---
     def layout_table_click(trace, points, selector):
         if points.point_inds:
             index = points.point_inds[0]
-            corresponding_indices = layout_overview_df.iloc[index]["Selected Cable Corridors"]
+            # Read displayed corridor numbers and map back to REAL indices
+            displayed = layout_overview_df.iloc[index]["Verwendete Seillinien"]
+            corresponding_indices = [display_to_real.get(int(d), int(d)) for d in displayed]
             update_interactive_based_on_indices(
                 current_cable_roads_table_figure,
                 current_cable_roads_table,
@@ -1087,10 +1219,12 @@ def interactive_cr_selection(
                 model_list,
                 transparent_line,
                 solid_line,
+                real_to_display,
+                precomputed=precomputed,
             )
             highlight_layout_row(index)
             update_selected_marker(index)
-    
+
     layout_overview_table_figure.data[0].on_click(layout_table_click)
 
     def plot_pareto_frontier(
@@ -1104,6 +1238,7 @@ def interactive_cr_selection(
         transparent_line,
         solid_line,
         model_list,
+        real_to_display,
         gamma: float = 0.12,
     ):
         ergonomics_column = (
@@ -1118,15 +1253,17 @@ def interactive_cr_selection(
 
         def normalize_and_gamma(arr: np.ndarray) -> np.ndarray:
             arr_min, arr_max = arr.min(), arr.max()
-            return np.power(np.zeros_like(arr) if arr_max == arr_min else (arr - arr_min) / (arr_max - arr_min), gamma)
-        
-        r = (normalize_and_gamma(x_vals) * 255).astype(int)
-        g = (normalize_and_gamma(y_vals) * 255).astype(int)
+            norm = np.zeros_like(arr) if arr_max == arr_min else (arr - arr_min) / (arr_max - arr_min)
+            return np.power(norm, gamma)
+
+        # Map: green=ecology(x), red=ergonomics(y), blue=cost(z)
+        g = (normalize_and_gamma(x_vals) * 255).astype(int)
+        r = (normalize_and_gamma(y_vals) * 255).astype(int)
         b = (normalize_and_gamma(z_vals) * 255).astype(int)
-        colors = [f"rgb({int(c_r*0.7 + 255*0.3)}, {int(c_g*0.7 + 255*0.3)}, {int(c_b*0.7 + 255*0.3)})" for c_r, c_g, c_b in zip(r, g, b)]
+        colors = [f"rgb({int(rr*0.7 + 255*0.3)}, {int(gg*0.7 + 255*0.3)}, {int(bb*0.7 + 255*0.3)})" for rr, gg, bb in zip(r, g, b)]
 
         pareto_frontier = go.FigureWidget(
-            data = [
+            data=[
                 go.Scatter3d(
                     x=x_vals,
                     y=y_vals,
@@ -1136,7 +1273,7 @@ def interactive_cr_selection(
                     textposition="middle center",
                     textfont=dict(color="black", size=12),
                     marker=dict(color=colors, size=8, line=dict(color="black", width=3)),
-                    name="solutions",
+                    showlegend=True,
                 ),
                 go.Scatter3d(
                     x=[],
@@ -1147,21 +1284,30 @@ def interactive_cr_selection(
                     text=[],
                     textposition="middle center",
                     textfont=dict(color="black", size=12),
-                    name="selected",
+                    name="Ausgewählt",
+                    showlegend=True,
                 ),
+                # Legend items explaining the color channels
+                go.Scatter3d(x=[x_vals.min()], y=[y_vals.min()], z=[z_vals.min()], mode="markers",
+                             marker=dict(color="green", size=8), name="Ökologisch (grün)", showlegend=True),
+                go.Scatter3d(x=[x_vals.min()], y=[y_vals.min()], z=[z_vals.min()], mode="markers",
+                             marker=dict(color="red", size=8), name="Ergonomisch (rot)", showlegend=True),
+                go.Scatter3d(x=[x_vals.min()], y=[y_vals.min()], z=[z_vals.min()], mode="markers",
+                             marker=dict(color="blue", size=8), name="Kosten (blau)", showlegend=True),
             ]
         )
 
         pareto_frontier.update_layout(
             title="Vergleich der Seiltrassenmodelle",
             width=800,
-            height=400,
+            height=420,
             scene=dict(
                 xaxis_title="Ökologische Optimierung",
-                yaxis_title="Ergonomische Optimalität",
+                yaxis_title="Ergonomische Optimierung",
                 zaxis_title="Kosten Optimierung",
                 xaxis={"autorange": "reversed"},
-                camera=dict(projection=dict(type="orthographic"))
+                camera=dict(projection=dict(type="orthographic")),
+                bgcolor=WHITE,
             ),
             clickmode="event+select",
             scene_camera=dict(
@@ -1172,20 +1318,18 @@ def interactive_cr_selection(
             margin=dict(r=30, l=30, t=30, b=30),
             uniformtext_minsize=12,
             uniformtext_mode="show",
+            paper_bgcolor=BG_GREY,
+            plot_bgcolor=BG_GREY,
+            legend=dict(itemsizing="constant"),
         )
 
         def selection_fn(trace, points, selector):
             nonlocal current_indices
-
-            # print("pareto frontier clicked", current_indices)
-            # get index of this point in the trace
+            if not points.point_inds:
+                return
             index = points.point_inds[0]
-
-            # get the corresponding list of activated cable rows from the dataframe
-            current_indices = results_df.iloc[index]["selected_lines"]
-            # print("current indices as per df", current_indices)
-            # print(type(current_indices))
-
+            # get REAL indices for this layout
+            current_indices = list(map(int, results_df.iloc[index]["selected_lines"]))
             update_interactive_based_on_indices(
                 current_cable_roads_table_figure,
                 current_cable_roads_table,
@@ -1199,6 +1343,8 @@ def interactive_cr_selection(
                 model_list,
                 transparent_line,
                 solid_line,
+                real_to_display,
+                precomputed=precomputed,
             )
             highlight_layout_row(index)
             update_selected_marker(index)
@@ -1206,7 +1352,7 @@ def interactive_cr_selection(
         pareto_frontier.data[0].on_click(selection_fn)
         return pareto_frontier
 
-    # get the pareto frontier as 3d scatter plot
+    # pareto
     pareto_frontier = plot_pareto_frontier(
         results_df,
         current_indices,
@@ -1218,10 +1364,16 @@ def interactive_cr_selection(
         transparent_line,
         solid_line,
         model_list,
+        real_to_display,
         gamma=0.12,
     )
 
     orig_x_vals = results_df["ecological_distances_RNI"].to_numpy(dtype=float)
+    ergonomics_column = (
+        "ergonomics_discances_RNI"
+        if "ergonomics_discances_RNI" in results_df.columns
+        else "ergonomics_distances_RNI"
+    )
     orig_y_vals = results_df[ergonomics_column].to_numpy(dtype=float)
     orig_z_vals = results_df["cost_objective_RNI"].to_numpy(dtype=float)
     point_visible = [True] * len(results_df)
@@ -1232,13 +1384,6 @@ def interactive_cr_selection(
         pareto_frontier.data[0].z = [z if v else None for z, v in zip(orig_z_vals, point_visible)]
         pareto_frontier.data[0].text = [str(i + 1) if v else "" for i, v in enumerate(point_visible)]
         update_selected_marker(None)
-    
-    for idx, cb in enumerate(visibility_checkboxes):
-        def toggle(change, i=idx):
-            point_visible[i] = change["new"]
-            apply_visibility()
-        
-        cb.observe(toggle, names="value")
 
     def update_selected_marker(index):
         """Draw a black marker over the selected pareto point."""
@@ -1255,107 +1400,93 @@ def interactive_cr_selection(
 
     update_selected_marker(None)
 
-    # create the onclick function to select new CRs
+    # click lines to build a custom set
     def selection_fn(trace, points, selector):
-        # since the handler is activated for all lines, test if this one has coordinates, ie. is the clicked line
-        if points.xs:
-            # set the selected cr to none by default
-            nonlocal selected_cr
-            selected_cr = None
+        nonlocal selected_cr
+        nonlocal current_indices
+        # since the handler is activated for all lines, test if this one has coordinates, i.e. is the clicked line
+        if not points.xs:
+            return
 
-            # deactive this if it is active
-            if trace.line.color != color_transparent:
-                interactive_layout.update_traces(
-                    line=transparent_line,
-                    selector={"name": trace.name},
-                )
+        # toggle this line
+        if trace.line.color != "rgba(0, 0, 0, 0.4)":
+            # currently highlighted -> demote to legendonly when deselecting
+            trace.visible = "legendonly"
+            trace.line.color = "rgba(0, 0, 0, 0.4)"
+            trace.line.width = 0.5
+        else:
+            # highlight
+            trace.visible = True
+            trace.line.color = "black"
+            trace.line.width = 5
+            selected_cr = display_to_real[int(trace.name)]
 
-            # and if this is the clicked line and its not yet activated, turn it black
-            elif trace.line.color == color_transparent:
-                # update this trace to turn black
-                interactive_layout.update_traces(
-                    line=solid_line,
-                    selector={"name": trace.name},
-                )
-
-                # and set the selected cr to the name of the trace if it is a new one
-                selected_cr = display_to_real[int(trace.name)]
-
-            # get all active traces  - ie those which are not lightgrey. very heavy-handed expression, but it works
-            active_traces = list(
-                interactive_layout.select_traces(
-                    selector=lambda x: (
-                        bool(getattr(x, "name", ""))
-                        and x.line.color
-                        and x.line.color != color_transparent
-                        and x.name != "Contour"
-                    )
+        # gather all active (non-grey) real indices -> they are visible lines with width >=5
+        active_traces = list(
+            interactive_layout.select_traces(
+                selector=lambda x: (
+                    bool(getattr(x, "name", ""))
+                    and getattr(x, "line", None) is not None
+                    and getattr(x.line, "width", 0) >= 5
                 )
             )
+        )
+        current_indices = [
+            display_to_real[int(t.name)]
+            for t in active_traces
+            if str(t.name).isdigit()
+        ]
 
-            nonlocal current_indices
-            current_indices = [
-                display_to_real[int(trace.name)] 
-                for trace in active_traces 
-                if str(trace.name).isdigit()
-            ]
+        # fast recolor + update (hide others but keep in legend)
+        updated_layout_costs = update_tables(
+            current_cable_roads_table_figure,
+            current_cable_roads_table,
+            layout_overview_table_figure,
+            anchor_table_figure,
+            road_anchor_table_figure,
+            current_indices,
+            interactive_layout,
+            forest_area_3,
+            model_list,
+            real_to_display,
+            precomputed=precomputed,
+        )
+        update_line_colors_by_indices(
+            current_indices, interactive_layout, color_map, forest_area_3, model_list, real_to_display,
+            volumes=updated_layout_costs.get("Wood Volume per Cable Corridor (m3)"), hide_unselected=True
+        )
 
-            # color the traces
-            # we set the color of the lines in the current indices in consecutive order by choosing corresponding colors from the colorway
-            update_line_colors_by_indices(current_indices, interactive_layout, color_map, forest_area_3, model_list, hide_unselected=True)
-
-            # update the tables accordingly
-            update_tables(
-                current_cable_roads_table_figure,
-                current_cable_roads_table,
-                layout_overview_table_figure,
-                anchor_table_figure,
-                road_anchor_table_figure,
-                current_indices,
-                interactive_layout,
-                forest_area_3,
-                model_list,
-            )
-
-    # add the onclick function to all line traces
+    # attach handler to all line traces
     for trace in interactive_layout.data[2:]:
         trace.on_click(selection_fn)
 
-    # add the custom buttons
+    # Buttons
     def set_current_cr(left=False):
-        """
-        Function to set the currently selected cr to the next one
-        Refers to the nonlocal variables selected_cr and current_indices
-        First we get the index of the cr, then we set the current cr to lightgrey, then we increment/decrement the cr, then we set the new cr to black
-        And finally we update the tables and the layout
-        """
+        """Cycle the currently selected CR left/right within the active set."""
         nonlocal selected_cr
         nonlocal current_indices
 
-        # if there are no current indices, return
-        if selected_cr is None:
+        if selected_cr is None or not current_indices:
             return
 
-        # get the index of the currently selected cr
+        # position within currently active
         index_cr = current_indices.index(selected_cr)
 
-        # make this trace lightgrey
-        interactive_layout.update_traces(
-            line=transparent_line,
-            selector={"meta": selected_cr},
-        )
+        # make current trace legendonly
+        interactive_layout.update_traces(visible="legendonly", selector={"meta": selected_cr})
 
-        # in/decrement the cr
-        selected_cr = display_to_real[real_to_display[selected_cr] - 1 if left else real_to_display[selected_cr] + 1]
+        # compute neighbor (wrap around the display numbers)
+        disp_current = real_to_display[selected_cr]
+        new_disp = display_to_real[disp_current - 1 if left else disp_current + 1] if (
+            (left and disp_current > 1) or (not left and disp_current < len(display_to_real))
+        ) else selected_cr
 
-        # and set the selected_cr on the index
+        selected_cr = new_disp
         current_indices[index_cr] = selected_cr
 
-        # update this trace to turn black
-        interactive_layout.update_traces(
-            line=solid_line,
-            selector={"meta": selected_cr},
-        )
+        # set new trace to solid
+        interactive_layout.update_traces(visible=True, selector={"meta": selected_cr})
+        interactive_layout.update_traces(line=dict(color="black", width=5), selector={"meta": selected_cr})
 
         update_colors_and_tables(
             current_cable_roads_table_figure,
@@ -1368,6 +1499,8 @@ def interactive_cr_selection(
             color_map,
             forest_area_3,
             model_list,
+            real_to_display,
+            precomputed=precomputed,
         )
 
     def move_left_callback(button):
@@ -1377,71 +1510,40 @@ def interactive_cr_selection(
         set_current_cr(left=False)
 
     def reset_button_callback(button):
-        """
-        Function to reset the currently selected cable roads
-        """
+        """Reset selected cable roads and UI."""
         nonlocal current_indices
         nonlocal selected_cr
         nonlocal layout_overview_df
 
-        # reset the selected cr to none
         selected_cr = None
-
-        # reset the current indices
         current_indices = []
 
-        # reset the layout
-        update_line_colors_by_indices(
-            [],
-            interactive_layout,
-            color_map,
-            forest_area_3,
-            model_list,
-            hide_unselected=False,
-        )
+        # reset layout (show everyone again)
+        update_line_colors_by_indices([], interactive_layout, color_map, forest_area_3, model_list, real_to_display, hide_unselected=False)
 
-        # reset the tables
-        current_cable_roads_table_figure.data[0].cells.values = [
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        ]
-
-        layout_overview_table_figure.data[0].cells.values = [
-            layout_overview_df[col] for col in layout_overview_df.columns
-        ]
+        # reset tables
+        _toggle_table(current_cable_roads_table_figure, False, 9)
+        _toggle_table(road_anchor_table_figure, False, 5)
+        layout_overview_table_figure.data[0].cells.values = [layout_overview_df[col] for col in layout_overview_df.columns]
 
         highlight_layout_row(None)
         update_selected_marker(None)
 
     def create_buttons():
-        """
-        Define the buttons for interacting with the layout and the comparison table
-        """
+        """Define and wire up the buttons."""
         move_left_button = Button(description="<-")
         move_right_button = Button(description="->")
         reset_all__CRs_button = Button(
             description="Reset all CRs",
             button_style="danger",
-            layout=Layout(width="150px", margin="10px 0 0 auto")
+            layout=Layout(width="150px", margin="10px 0 0 auto"),
         )
 
-        # and bind all the functions to the buttons
         move_left_button.on_click(move_left_callback)
         move_right_button.on_click(move_right_callback)
         reset_all__CRs_button.on_click(reset_button_callback)
 
-        return (
-            move_left_button,
-            move_right_button,
-            reset_all__CRs_button,
-        )
+        return (move_left_button, move_right_button, reset_all__CRs_button)
 
     buttons = list(create_buttons())
 
@@ -1449,7 +1551,7 @@ def interactive_cr_selection(
         interactive_layout,
         current_cable_roads_table_figure,
         layout_overview_table_figure,
-        model_visibility_table,
+        model_visibility_table,   # styled checkbox table (VBox)
         anchor_table_figure,
         road_anchor_table_figure,
         pareto_frontier,
