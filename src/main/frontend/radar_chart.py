@@ -391,7 +391,7 @@ def _compute_order(kind:str, scores:pd.DataFrame, original_order: List[int]) -> 
 
 
 
-def build_radar_dashboard(results_df: pd.DataFrame, height, width):
+def build_radar_dashboard(results_df: pd.DataFrame, height, width) -> w.VBox:
 
     scores = _make_radar_scores(results_df)
     big_card, big_fig, index_to_trace = _build_big_radar(scores, list(scores.index), height, width)
