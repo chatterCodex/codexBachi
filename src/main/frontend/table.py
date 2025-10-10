@@ -78,6 +78,7 @@ class Table:
         self.root = w.VBox([self.grid, _TABLE_CSS], layout=w.Layout(width="100%", overflow="visible"))
 
         self._selected: int = -1
+        self.set_visibility(is_visible)
 
     def getWidget(self) -> w.Widget:
         return self.root
