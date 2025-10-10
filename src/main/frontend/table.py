@@ -54,38 +54,17 @@ def _build_cell(text: str, isColor: bool = False, isHeader: bool = False) -> w.V
     return box
 
 class Table:
-    def __init__(self, headers: List[str], data: List[List[str]], width: int, gap: int = 1):
+    def __init__(self, headers: List[str], data: List[List[str]], width: int, is_visible: bool = True, gap: int = 1):
         self.headers = headers
-        self.data = data
         self.cols = len(headers)
-
-        for d in data:
-            if len(d) != self.cols:
-                raise ValueError("All rows must have the same number of columns as headers")
-            
-        self._row_cells: List[List[w.Box]] = []
-        self._all_cells: List[w.Box] = []
-
-        cells: List[w.Box] = []
-
-        for h in headers:
-            cell = _build_cell(h, True, True)
-            cells.append(cell)
-            self._all_cells.append(cell)
-
-        for i, row in enumerate(data):
-            row_cells: List[w.Box] = []
-            for item in row:
-                cell = _build_cell(item, (i % 2 == 1))
-                cells.append(cell)
-                row_cells.append(cell)
-                self._all_cells.append(cell)
-            self._row_cells.append(row_cells)
+        self.width = width
+        self.is_visible = is_visible
 
         self.grid = w.GridBox(
-            children=tuple(cells),
+            children=tuple(self.build_table(data)),
             layout=w.Layout(
-                width=f"{width}px",
+                width="auto",
+                min_width=f"{width}px",
                 height="auto",
                 grid_template_columns=f"repeat({self.cols}, minmax(0, 1fr))",
                 grid_template_rows=f"auto repeat({len(self._row_cells)}, auto)",
@@ -96,7 +75,7 @@ class Table:
         )
 
         self.grid.add_class("my-table")
-        self.root = w.VBox([self.grid, _TABLE_CSS], layout=w.Layout(width=f"{width}px"))
+        self.root = w.VBox([self.grid, _TABLE_CSS], layout=w.Layout(width="100%", overflow="visible"))
 
         self._selected: int = -1
 
@@ -121,3 +100,45 @@ class Table:
                 cell.add_class("selected-background")
 
         self._selected = index
+
+    def build_table(self, data: List[List[str]]) -> List[w.Box]:
+        for row in data:
+            if len(row) != self.cols:
+                raise ValueError("All rows must have the same number of columns as headers")
+            
+        self.data = data
+        self._row_cells: List[List[w.Box]] = []
+        self._all_cells: List[w.Box] = []
+
+        cells: List[w.Box] = []
+
+        for h in self.headers:
+            cell = _build_cell(h, True, True)
+            cells.append(cell)
+            self._all_cells.append(cell)
+
+        for i, row in enumerate(data):
+            row_cells: List[w.Box] = []
+            for item in row:
+                cell = _build_cell(item, (i % 2 == 1))
+                cells.append(cell)
+                row_cells.append(cell)
+                self._all_cells.append(cell)
+            self._row_cells.append(row_cells)
+
+        return cells
+
+
+    def update_data(self, new_data: List[List[str]]):
+
+        self.grid.children = tuple(self.build_table(new_data))
+        
+        self.grid.layout.grid_template_rows = f"auto repeat({len(self._row_cells)}, auto)"
+        
+        self._selected = -1
+
+    def set_visibility(self, is_visible: bool):
+        if is_visible:
+            self.root.layout.display = "block"
+        else:
+            self.root.layout.display = "none"
