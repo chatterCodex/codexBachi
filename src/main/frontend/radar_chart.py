@@ -2,18 +2,12 @@ import ipywidgets as w
 import ipyevents as ev
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
+
 import numpy as np
 from plotly.colors import hex_to_rgb
 from typing import Dict, List, Tuple, Sequence, cast
 
 # ---------- Naming & _THEME ----------
-
-_NAMES = {
-    "axes": ["Ergonomische Optimierung", "Ökologische Optimierung", "Kosten Optimierung"],
-    "title": "Vergleich der Seiltrassenmodelle"
-}
-
 _THEME = {
     "card_bg": "rgb(241, 248, 241)",
     "panel_bg": "rgb(255, 255, 255)",
@@ -126,70 +120,9 @@ def _as_float(v: object) -> float:
     return float("-inf")
 
 
-
-def _scale(series: pd.Series, pad_low: float = 0.1) -> pd.Series:
-    """Min-max to [0, 1], but the min is lowered by pad_low * (max - min)"""
-
-    s = pd.to_numeric(series, errors="coerce")
-    min, max = s.min(skipna=True), s.max(skipna=True)
-    rng = max - min
-
-    if pd.isna(rng) or rng == 0:
-        return pd.Series(0.5, index=s.index, dtype="float64")
-    
-    min_adj = min - pad_low * rng
-    return ((s - min_adj) / (max - min_adj)).clip(0, 1)
-
-
-def _convert_hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
-    r, g, b = hex_to_rgb(hex_color)
-    return f"rgba({r}, {g}, {b}, {alpha:.3f})"
-
-
-def _triangle_area_on_axes(row: pd.Series, axes: List[str]) -> float:
-    """
-    Calculate the area of the triangle formed by the points on the given axes.
-    Shoelace formula in Cartesian after projecting.
-    """
-
-    angles = np.array([0, 2 * np.pi / 3, 4 * np.pi / 3])
-    r = np.array([row[a] for a in axes], dtype=float)
-    x = r * np.cos(angles)
-    y = r * np.sin(angles)
-    return 0.5 * abs(x[0]*y[1] + x[1]*y[2] + x[2]*y[0] - y[0]*x[1] - y[1]*x[2] - y[2]*x[0])
-
-
-def _make_radar_scores(results_df: pd.DataFrame)-> pd.DataFrame:
-    df = results_df.copy()
-
-    eco = _scale(df["ecological_distances_RNI"])
-    ergo = _scale(df["ergonomics_distances_RNI"])
-    cost = _scale(df["cost_objective_RNI"])
-
-    scores = pd.DataFrame({
-        "Name": [f"{i+1}" for i in df.index],
-        "Ökologische Optimierung": eco,
-        "Ergonomische Optimierung": ergo,
-        "Kosten Optimierung": cost,
-    }, index=df.index)
-
-    colors = [px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, _ in enumerate(scores.index)]
-    scores["color"]= [ _convert_hex_to_rgba(color) for color in colors]
-    scores["fill_color"]= [ _convert_hex_to_rgba(color, 0.18) for color in colors]
-    scores["raw_eco"] = results_df.loc[df.index, "ecological_distances_RNI"]
-    scores["raw_ergo"] = results_df.loc[df.index, "ergonomics_distances_RNI"]
-    scores["raw_cost"] = results_df.loc[df.index, "cost_objective_RNI"]
-
-    axes = _NAMES["axes"]
-    scores["triangle_area"] = scores.apply(_triangle_area_on_axes, axis=1, args=(axes,))
-
-    return scores
-
-
 # ---------- Plot builders ----------
 
-def _build_big_radar(scores: pd.DataFrame, active_indices: List[int], height: int, width: int) -> Tuple[w.VBox, go.FigureWidget, Dict[int, int]]:
-    axes = _NAMES["axes"]
+def _build_big_radar(scores: pd.DataFrame, active_indices: List[int], height: int, width: int, axes: List[str]) -> Tuple[w.VBox, go.FigureWidget, Dict[int, int]]:
     thetas = list(axes) + [axes[0]]
 
     ticktext = [lbl.replace(" ", "<br>") for lbl in axes]
@@ -313,8 +246,7 @@ def _build_mini_radar(scores: pd.DataFrame, idx: int, axes: Sequence[str], theta
     return card, mini
 
 
-def _build_radar_grid(scores: pd.DataFrame, height: int, width: int, gap: int = 10) -> Tuple[w.GridBox, Dict[int, go.FigureWidget], Dict[int, w.VBox], List[str]]:
-    axes = _NAMES["axes"]
+def _build_radar_grid(scores: pd.DataFrame, height: int, width: int, axes: List[str], gap: int = 10) -> Tuple[w.GridBox, Dict[int, go.FigureWidget], Dict[int, w.VBox], List[str]]:
     cell_h = (height - gap * 2) // 3
     cell_w = (width - gap * 2) // 3
 
@@ -391,13 +323,12 @@ def _compute_order(kind:str, scores:pd.DataFrame, original_order: List[int]) -> 
 
 
 
-def build_radar_dashboard(results_df: pd.DataFrame, height, width) -> w.VBox:
+def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: List[str]) -> w.VBox:
 
-    scores = _make_radar_scores(results_df)
-    big_card, big_fig, index_to_trace = _build_big_radar(scores, list(scores.index), height, width)
+    big_card, big_fig, index_to_trace = _build_big_radar(scores, list(scores.index), height, width, names)
 
     grid_height = max(60, height - _CONSTANTS["sort_bar_height"] - _CONSTANTS["sort_bar_gap"])
-    grid, minis_by_idx, cards_by_idx, area_ids = _build_radar_grid(scores, grid_height, width)
+    grid, minis_by_idx, cards_by_idx, area_ids = _build_radar_grid(scores, grid_height, width, names)
 
     active: Dict[int, bool] = {idx: True for idx in minis_by_idx.keys()}
     original_order: List[int] = list(scores.index[:9])
