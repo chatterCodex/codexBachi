@@ -1,4 +1,3 @@
-import json
 import pulp
 from spopt.locate import PMedian
 from pulp import LpConstraint, LpConstraintLE
@@ -461,31 +460,6 @@ class optimization_object_spopt(optimization_object):
         )
 
         return self.model
-    
-    def to_dict(self) -> dict:
-        """Return a serializable representation of the optimization object.
-
-        Lists and numpy arrays are converted to Python lists. GeoDataFrames are
-        represented by the indices of the selected rows to keep the output
-        concise.
-        """
-        result = {}
-        for key, value in self.__dict__.items():
-            if key.startswith("_"):
-                continue
-            if isinstance(value, np.ndarray):
-                result[key] = value.tolist()
-            elif isinstance(value, gpd.GeoDataFrame):
-                result[key] = value.index.tolist()
-            elif isinstance(value, pd.Series):
-                result[key] = value.tolist()
-            else:
-                try:
-                    json.dumps(value)
-                    result[key] = value
-                except TypeError:
-                    result[key] = str(value)
-        return result
 
 
 class result_object(ABC):
@@ -494,32 +468,6 @@ class result_object(ABC):
     cable_road_objects: list[classes_cable_road_computation.Cable_Road]
     fac_vars: list[bool]
     cli_assgn_vars: list[list[bool]]
-
-    def to_dict(self) -> dict:
-        """Return a serializable representation of the result.
-
-        Lists and numpy arrays are converted to Python lists. GeoDataFrames are
-        represented by the indices of the selected rows to keep the output
-        concise.
-        """
-
-        result = {}
-        for key, value in self.__dict__.items():
-            if key.startswith("_"):
-                continue
-            if isinstance(value, np.ndarray):
-                result[key] = value.tolist()
-            elif isinstance(value, gpd.GeoDataFrame):
-                result[key] = value.index.tolist()
-            elif isinstance(value, pd.Series):
-                result[key] = value.tolist()
-            else:
-                try:
-                    json.dumps(value)
-                    result[key] = value
-                except TypeError:
-                    result[key] = str(value)
-        return result
 
 
 class expert_result(result_object):
@@ -625,19 +573,6 @@ class spopt_result(result_object):
             self.ergonomics_objective,
         ) = optimization_object.get_objective_values()
 
-    def to_dict(self) -> dict:
-        """Return a serializable representation of the result.
-
-        Lists and numpy arrays are converted to Python lists. GeoDataFrames are
-        represented by the indices of the selected rows to keep the output
-        concise.
-        """
-        result = super().to_dict()
-        result["cable_road_objects"] = [
-            obj.to_dict() for obj in self.cable_road_objects
-        ]
-        return result
-
 
 def model_results_comparison(
     result_list: list[result_object],
@@ -674,7 +609,7 @@ def model_results_comparison(
             total_profit_per_layout_baseline += profit_this_cr
 
     for result in result_list:
-         # redo the c2f vars and fac2cli, since they dont align with which trees are assigned to which cable corridor
+        # redo the c2f vars and fac2cli, since they dont align with which trees are assigned to which cable corridor
         # 1. get the indexes of selected lines
         selected_lines_index = list(result.selected_lines.index)
         # 2. get the distances for all trees to those lines
@@ -693,7 +628,7 @@ def model_results_comparison(
         for id, col in enumerate(result.fac2cli):
             c2fmatrix[col, id] = True
         result.c2f_vars = c2fmatrix
-        
+
         # and the corresponding rows from the distance matrix, pc matrix etc
         distance_tree_line_array.append(np.sum(result.c2f_vars * distance_tree_line))
         productivity_array.append(np.sum(result.c2f_vars * productivity_cost_matrix))

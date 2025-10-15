@@ -1,6 +1,8 @@
+from math import dist
 import numpy as np
 from torch import layout, mode
 from src.main import geometry_operations
+import plotly.graph_objects as go
 
 
 """For Radar Chart"""
@@ -8,7 +10,7 @@ from src.main import geometry_operations
 import pandas as pd
 from plotly.colors import hex_to_rgb
 import plotly.express as px
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any
 
 
 def _scale(series: pd.Series, pad_low: float = 0.1) -> pd.Series:
@@ -403,5 +405,132 @@ def get_anchor_table_data(forest_area_3, model_list, results_df, selected_index:
             f"{float(xcoord[i]):.2f}" if i < len(xcoord) else "0.00",
             f"{float(ycoord[i]):.2f}" if i < len(ycoord) else "0.00",
         ])
-        
+
     return rows
+
+def _sample_line_xy(line, min_points: int = 20, step: float = 5.0) -> Tuple[List[float], List[float]]:
+    length = float(line.length)
+    n_points = max(int(length // step) + 2, min_points)
+    dists = np.linspace(0.0, length, n_points)
+    xs, ys = [], []
+    for d in dists:
+        p = line.interpolate(d)
+        xs.append(float(p.x))
+        ys.append(float(p.y))
+    return xs, ys
+
+def prepare_map_data(forest_area_3, results_df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Precompute trees, corridors, anchors, and display/index maps.
+    • Only include corridors that appear in at least one optimization result.
+    • Tail anchor coords are the line end-point (end tree of the corridor).
+    """
+    import pandas as pd
+    import numpy as np
+    import plotly.express as px
+
+    # --- ONLY corridors present in any optimization result (old interface does this) ---
+    # indices_to_show will be REAL indices (line_gdf index)
+    indices_to_show = sorted({int(i) for row in results_df["selected_lines"] for i in row})
+    display_names   = list(range(1, len(indices_to_show) + 1))
+    display_to_real = dict(zip(display_names, indices_to_show))
+    real_to_display = dict(zip(indices_to_show, display_names))
+    # (Old behavior reference) :contentReference[oaicite:1]{index=1}
+
+    # Stable base palette (used for default/neutral view; selection uses per-selection colors)
+    palette  = px.colors.qualitative.Plotly
+    color_map = {idx: palette[i % len(palette)] for i, idx in enumerate(indices_to_show)}
+
+    # Trees
+    tree_x, tree_y, tree_bhd = [], [], []
+    for geom, bhd in zip(
+        forest_area_3.harvesteable_trees_gdf.geometry,
+        forest_area_3.harvesteable_trees_gdf.get("BHD", pd.Series([None]*len(forest_area_3.harvesteable_trees_gdf)))
+    ):
+        if hasattr(geom, "x") and hasattr(geom, "y"):
+            x, y = float(geom.x), float(geom.y)
+        else:
+            x, y = geom.xy[0][0], geom.xy[1][0]
+        tree_x.append(x)
+        tree_y.append(y)
+        tree_bhd.append(None if pd.isna(bhd) else int(bhd))
+
+    # --- helper: dense-ish sampling along each polyline for nice hover everywhere ---
+    def _sample_line_xy(line, min_points: int = 20, step: float = 5.0):
+        length = float(line.length)
+        n_points = max(int(length // step) + 2, min_points)
+        dists = np.linspace(0.0, length, n_points)
+        xs, ys = [], []
+        for d in dists:
+            p = line.interpolate(d)
+            xs.append(float(p.x)); ys.append(float(p.y))
+        return xs, ys
+
+    # Corridors + anchors
+    corridors: Dict[int, Dict[str, Any]] = {}
+    for real_idx, row in forest_area_3.line_gdf.loc[indices_to_show].iterrows():
+        line = row.geometry
+        xs, ys = _sample_line_xy(line)
+        start_pt = line.coords[0]
+        end_pt   = line.coords[-1]
+
+        # --- Tail anchor == end tree of the corridor: use the end-point coords ---
+        # Keep BHD if available from end_support_tree, but coords are from `end_pt`
+        tail_src = getattr(row, "end_anchor_tree", None)
+        ex = float(end_pt[0]); ey = float(end_pt[1]); ebhd = 0  # fallback
+        if isinstance(tail_src, dict):
+            ex = float(tail_src.get("x", ex))
+            ey = float(tail_src.get("y", ey))
+            ebhd = int(tail_src.get("BHD", 0))
+        else:
+            # sometimes it's a pandas Series
+            try:
+                ex = float(tail_src.loc["x"])
+                ey = float(tail_src.loc["y"])
+                ebhd = int(tail_src.loc.get("BHD", 0))
+            except Exception:
+                pass  # keep fallback
+
+        tail_anchor = dict(x=ex, y=ey, BHD=ebhd)
+
+        # --- Road anchors: keep them all, normalized to list[dict] ---
+        road_anchor_entries: List[dict] = []
+        ra_src = getattr(row, "road_anchor_tree_series", None)
+        if isinstance(ra_src, pd.DataFrame) and not ra_src.empty:
+            for _, r in ra_src.iterrows():
+                road_anchor_entries.append(
+                    dict(x=float(r.get("x", 0)), y=float(r.get("y", 0)), BHD=int(r.get("BHD", 0)))
+                )
+        elif isinstance(ra_src, dict) and "features" in ra_src:
+            for f in ra_src["features"]:
+                props = f.get("properties", f)
+                road_anchor_entries.append(
+                    dict(x=float(props.get("x", 0)), y=float(props.get("y", 0)), BHD=int(props.get("BHD", 0)))
+                )
+
+        corridors[int(real_idx)] = dict(
+            xs=xs, ys=ys,
+            start=(float(start_pt[0]), float(start_pt[1])),
+            end=(float(end_pt[0]), float(end_pt[1])),
+            tail_anchor=tail_anchor,
+            road_anchors=road_anchor_entries,
+        )
+
+    # Extents
+    all_x = tree_x[:]; all_y = tree_y[:]
+    for c in corridors.values():
+        all_x += c["xs"]; all_y += c["ys"]
+        all_x.append(c["tail_anchor"]["x"]); all_y.append(c["tail_anchor"]["y"])
+        for ra in c["road_anchors"]:
+            all_x.append(ra["x"]); all_y.append(ra["y"])
+    x_range = (min(all_x) - 10, max(all_x) + 10) if all_x else None
+    y_range = (min(all_y) - 10, max(all_y) + 10) if all_y else None
+
+    return dict(
+        tree_x=tree_x, tree_y=tree_y, tree_bhd=tree_bhd,
+        corridors=corridors,
+        indices_to_show=indices_to_show,
+        display_to_real=display_to_real, real_to_display=real_to_display,
+        color_map=color_map,               # base palette (neutral/legend use)
+        x_range=x_range, y_range=y_range,
+    )

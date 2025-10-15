@@ -1,6 +1,3 @@
-import json
-from cycler import V
-from pyparsing import line
 from shapely.geometry import LineString, Point
 from shapely.affinity import rotate, scale
 import numpy as np
@@ -69,24 +66,6 @@ class Support:
     @max_supported_force_at_attachment_height.setter
     def max_supported_force_at_attachment_height(self, value):
         self.max_supported_force[self.attachment_height] = value
-
-    def to_dict(self) -> dict:
-        """Returns the support as a dictionary"""
-        return {
-            "attachment_height": self.attachment_height,
-            "xy_location": {
-                "type": "Point",
-                "coordinates": [self.xy_location.x, self.xy_location.y]
-            },
-            "floor_height": self.floor_height,
-            "total_height": self.total_height,
-            "max_supported_force": self.max_supported_force,
-            "max_deviation": self.max_deviation,
-            "is_tower": self.is_tower,
-    }
-
-    def __str__(self) -> str:
-        return f"Support(attachment_height={self.attachment_height}, xy_location=({self.xy_location.x}, {self.xy_location.y}), total_height={self.total_height})"
 
 
 class Cable_Road:
@@ -286,27 +265,6 @@ class Cable_Road:
             self.s_current_tension = pre_tension
         else:
             self.s_current_tension = self.s_max_maximalspannkraft
-        
-    def to_dict(self) -> dict:
-        """Returns the cable road as a dictionary"""
-        return {
-            "start_support": self.start_support.to_dict(),
-            "end_support": self.end_support.to_dict(),
-            "line": {
-                "type": "LineString",
-                "coordinates": list(self.line.coords)
-            },
-            "floor_height_below_line_points": self.floor_height_below_line_points.tolist() if isinstance(self.floor_height_below_line_points, np.ndarray) else self.floor_height_below_line_points,
-            "sloped_line_to_floor_distances": self.sloped_line_to_floor_distances.tolist(),
-            "unloaded_line_to_floor_distances": self.unloaded_line_to_floor_distances.tolist(),
-            "cable_rope_length": self.c_rope_length,
-            "s_current_tension": self.s_current_tension,
-            "number_sub_segments": self.number_sub_segments,
-        }
-    
-    def __str__(self) -> str:
-        return f"Cable_Road(start_support={self.start_support}, end_support={self.end_support})"
-    
 
 
 class SupportedSegment:
@@ -319,14 +277,6 @@ class SupportedSegment:
         self.cable_road = cable_road
         self.start_support = start_support
         self.end_support = end_support
-
-    def to_dict(self) -> dict:
-        """Returns the supported segment as a dictionary"""
-        return {
-            "cable_road": self.cable_road.to_dict(),
-            "start_support": self.start_support.to_dict(),
-            "end_support": self.end_support.to_dict(),
-        }
 
 
 # Helper Functions for setting up the cable road
@@ -500,38 +450,3 @@ class forest_area:
         self.harvesteable_trees_gdf_sortiment = self.harvesteable_trees_gdf.loc[
             indexes_to_keep
         ]
-
-    def to_dict(self) -> dict:
-        """Corrected and safe serialization"""
-        line_gdf_clean = self.line_gdf.copy()
-
-        # DO NOT manually convert 'geometry' to __geo_interface__, GeoPandas handles this.
-        # Only handle columns explicitly known to contain non-geometry complex objects.
-        for col in line_gdf_clean.columns:
-            if col != "geometry":
-                if line_gdf_clean[col].apply(lambda x: hasattr(x, "__geo_interface__")).all():
-                    line_gdf_clean[col] = line_gdf_clean[col].apply(
-                        lambda x: x.__geo_interface__
-                    )
-
-                elif line_gdf_clean[col].apply(lambda x: isinstance(x, Cable_Road)).all():
-                    line_gdf_clean[col] = line_gdf_clean[col].apply(lambda x: x.to_dict())
-
-                elif line_gdf_clean[col].apply(lambda x: isinstance(x, pd.DataFrame)).all():
-                    line_gdf_clean[col] = line_gdf_clean[col].apply(lambda df: df.to_dict())
-
-        # Serialize start_point_dict points safely
-        def serialize_points_dict(d):
-            serialized = {}
-            for k, v in d.items():
-                if hasattr(v, 'coords'):
-                    serialized[k] = {"type": "Point", "coordinates": list(v.coords)[0]}
-                else:
-                    serialized[k] = v
-            return serialized
-
-        # Use geopandas built-in to_json for geometry
-        return {
-            "line_gdf": json.loads(line_gdf_clean.to_json(default=str)),
-            "start_point_dict": serialize_points_dict(self.start_point_dict),
-        }
