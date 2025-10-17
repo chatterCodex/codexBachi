@@ -398,7 +398,7 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
             display="flex",
             flex_flow="row wrap",
             align_items="flex-start",
-            justify_content="center"
+            justify_content="center",
         )
     )
     container.add_class("app-scope")

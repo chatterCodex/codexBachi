@@ -147,7 +147,7 @@ class Map:
                 x=corr["xs"], y=corr["ys"],
                 mode="lines",
                 line=dict(color=self._neutral_line, width=0.8),
-                name=f"CR {self.data['real_to_display'].get(int(real_idx), int(real_idx))}",
+                name=f"ST {self.data['real_to_display'].get(int(real_idx), int(real_idx))}",
                 meta=int(real_idx),
                 legendgroup="line",
                 hoverinfo="skip",
@@ -208,7 +208,7 @@ class Map:
 
         # Layout
         fig.update_layout(
-            width=1200, height=900,
+            width=1500, height=900,
             margin=dict(r=20, l=20, t=30, b=20),
             paper_bgcolor="rgb(241, 248, 241)",
             plot_bgcolor="rgb(241, 248, 241)",

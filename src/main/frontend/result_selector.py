@@ -48,14 +48,14 @@ class ResultSelector:
         self._create_widgets()
 
     def _create_widgets(self):
-        results_options = [("No selection", None)] + [
-            (f"Result {i+1}", i) for i in range(self.num_results)
+        results_options = [("Keine Auswahl", None)] + [
+            (f"Optimierung {i+1}", i) for i in range(self.num_results)
         ]
 
         result_dropdown =  w.Dropdown(
+            width="200px",
             options=results_options,
             value=None,
-            description="Select Result:",
             disabled=False,
             style={'description_width': 'initial'},
             layout=w.Layout(width="300px")
@@ -65,7 +65,18 @@ class ResultSelector:
 
         result_dropdown.observe(self._handle_change, names="value")
 
-        self.widget = w.VBox([_DROPDOWN_CSS, result_dropdown])
+        label = w.HTML("<span class='sort-label'><b>Modell:</b></span>")
+
+        container = w.HBox(
+            [label, result_dropdown],
+            layout=w.Layout(
+                width=f"{300}px",
+                align_items="center",
+                margin=f"0 0 {10}px 0",
+            )
+        )
+
+        self.widget = w.VBox([_DROPDOWN_CSS, container])
         self.widget.add_class("app-scope")
 
     def _handle_change(self, change):
