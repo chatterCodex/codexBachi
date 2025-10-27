@@ -1,12 +1,14 @@
-from pyexpat import model
+# interface.py
 import pandas as pd
 import ipywidgets as w
+
 from src.main.frontend.map import Map
 from src.main.frontend.result_selector import ResultSelector
 from src.main.frontend.radar_chart import build_radar_dashboard
-from src.main.frontend.data_prep import make_radar_scores, get_overview_table_data, get_selected_table_data, get_anchor_table_data, prepare_map_data
 from src.main.frontend.table import Table
 
+# NEW: pull the single-entry factory that precomputes everything
+from src.main.frontend.data_prep import build_viz_data
 
 _NAMES = {
     "axes": ["Ergonomische Optimierung", "Ökologische Optimierung", "Kosten Optimierung"],
@@ -41,36 +43,40 @@ _NAMES = {
         "Height [m]",
         "X-Koordinate",
         "Y-Koordinate",
-    ]
+    ],
 }
 
+def build_interface_with_viz_data(vd, results_df) -> w.VBox:
+    map_component = Map(vd.map, "Seiltrassen Karte")
 
-def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VBox:
-    scores = make_radar_scores(results_df, _NAMES["axes"])
-
-    map_payload = prepare_map_data(forest_area_3, results_df)
-    map_component = Map(map_payload)
-
+    # Radar chart
+    scores = vd.make_radar_scores(_NAMES["axes"])
     radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
 
-    overview_table = Table(_NAMES["table_overview_headers"], get_overview_table_data(forest_area_3, model_list, results_df), 1500)
+    # Overview table (precomputed for all models)
+    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500)
 
+    # Detail tables (empty/hidden until a model is selected)
     selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False)
-    anchor_table = Table(_NAMES["table_anchor_headers"], [], 450, is_visible=False)
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False)
 
-    selector = ResultSelector(num_results=len(results_df), on_select=lambda idx: _on_select(idx, forest_area_3, model_list, results_df, selected_table, anchor_table, map_component, overview_table))
+    # Result selector → uses vd (instant switching, no recompute)
+    selector = ResultSelector(
+        num_results=len(results_df),
+        on_select=lambda idx: _on_select_with_vd(
+            idx, vd, results_df, selected_table, anchor_table, map_component, overview_table
+        ),
+    )
 
     toolbar = w.HBox(
-        [
-            selector.get_widget(),
-        ],
+        [selector.get_widget()],
         layout=w.Layout(width="100%", max_width="1500px", align_items="center", margin="5px 0"),
     )
 
     sel_widget  = selected_table.getWidget()
     anch_widget = anchor_table.getWidget()
 
-    left_wrap = w.Box([sel_widget],  layout=w.Layout(margin="0 10px 0 0", flex="1 1 auto"))
+    left_wrap  = w.Box([sel_widget],  layout=w.Layout(margin="0 10px 0 0", flex="1 1 auto"))
     right_wrap = w.Box([anch_widget], layout=w.Layout(margin="0 0 0 10px", flex="1 1 auto"))
 
     details_row = w.HBox(
@@ -91,13 +97,84 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
             overview_table.getWidget(),
             details_row,
         ],
-        layout=w.Layout(align_items="center", gap="16px", width="100%", padding="16px 20px")
+        layout=w.Layout(align_items="center", gap="16px", width="100%", padding="16px 20px"),
     )
 
     return ui
 
 
-def _on_select(selected_index, forest_area_3, model_list, results_df, selected_table: Table, anchor_table: Table, map_component: Map, overview_table: Table) -> None:
+
+def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VBox:
+    # Build once: distances, per-model layouts, union layout, stable map payload, overview rows, etc.
+    vd = build_viz_data(forest_area_3, model_list, results_df)
+
+    # Map (stable hover: length + fixed volume)
+    map_component = Map(vd.map, "Seiltrassen Karte")
+
+    # Radar chart
+    scores = vd.make_radar_scores(_NAMES["axes"])
+    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
+
+    # Overview table (precomputed for all models)
+    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500)
+
+    # Detail tables (empty/hidden until a model is selected)
+    selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False)
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False)
+
+    # Result selector → uses vd (instant switching, no recompute)
+    selector = ResultSelector(
+        num_results=len(results_df),
+        on_select=lambda idx: _on_select_with_vd(
+            idx, vd, results_df, selected_table, anchor_table, map_component, overview_table
+        ),
+    )
+
+    toolbar = w.HBox(
+        [selector.get_widget()],
+        layout=w.Layout(width="100%", max_width="1500px", align_items="center", margin="5px 0"),
+    )
+
+    sel_widget  = selected_table.getWidget()
+    anch_widget = anchor_table.getWidget()
+
+    left_wrap  = w.Box([sel_widget],  layout=w.Layout(margin="0 10px 0 0", flex="1 1 auto"))
+    right_wrap = w.Box([anch_widget], layout=w.Layout(margin="0 0 0 10px", flex="1 1 auto"))
+
+    details_row = w.HBox(
+        [left_wrap, right_wrap],
+        layout=w.Layout(
+            width="100%",
+            align_items="flex-start",
+            margin="20px 0",
+            overflow="auto",
+        ),
+    )
+
+    ui = w.VBox(
+        [
+            map_component.get_map_widget(),
+            toolbar,
+            radar_chart,
+            overview_table.getWidget(),
+            details_row,
+        ],
+        layout=w.Layout(align_items="center", gap="16px", width="100%", padding="16px 20px"),
+    )
+
+    return ui
+
+
+def _on_select_with_vd(
+    selected_index: int | None,
+    vd,                       # VizData (precomputed)
+    results_df: pd.DataFrame,
+    selected_table: Table,
+    anchor_table: Table,
+    map_component: Map,
+    overview_table: Table,
+) -> None:
+    """Selector callback wired to the precomputed VizData instance."""
     if selected_index is None:
         selected_table.update_data([])
         selected_table.set_visibility(False)
@@ -107,15 +184,18 @@ def _on_select(selected_index, forest_area_3, model_list, results_df, selected_t
         overview_table.highlight_row(-1)
         return
 
+    # Highlight selected model in overview
     overview_table.highlight_row(selected_index)
 
+    # Get the display data for detail tables instantly (precomputed)
+    sel_rows  = vd.selected_rows(selected_index)
+    anch_rows = vd.anchor_rows(selected_index)
+
+    # Update map coloring/selection:
     selected_lines = results_df.iloc[selected_index]["selected_lines"]
-
-    sel_rows = get_selected_table_data(forest_area_3, model_list, results_df, selected_index)
-    anch_rows = get_anchor_table_data(forest_area_3, model_list, results_df, selected_index)
-
     map_component.update_map(selected_index, selected_lines)
 
+    # Show/hide detail tables based on data presence
     if sel_rows:
         selected_table.update_data(sel_rows)
         selected_table.set_visibility(True)
@@ -129,10 +209,3 @@ def _on_select(selected_index, forest_area_3, model_list, results_df, selected_t
     else:
         anchor_table.update_data([])
         anchor_table.set_visibility(False)
-
-
-
-
-
-
-    

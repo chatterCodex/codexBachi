@@ -2,8 +2,11 @@ import pickle
 import re
 from typing import Any
 import json
+import joblib
 import pandas as pd
 import inspect
+
+from src.main.frontend.data_prep import VizData
 
 def save_results(results: Any, file_path: str) -> None:
     """Saves results to a file using pickle.
@@ -76,3 +79,11 @@ def load_results(file_path: str) -> Any:
     """
     with open(file_path, 'rb') as file:
         return pickle.load(file)
+    
+def save_viz(viz: VizData, path: str) -> None:
+    if hasattr(viz, "dtl_full"): viz.dtl_full = viz.dtl_full.astype('float32', copy=False)
+    if hasattr(viz, "dcs_full"): viz.dcs_full = viz.dcs_full.astype('float32', copy=False)
+    joblib.dump(viz, path, compress=("lz4", 3))
+
+def load_viz(path: str) -> VizData:
+    return joblib.load(path)
