@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 import numpy as np
 from plotly.colors import hex_to_rgb
-from typing import Dict, List, Tuple, Sequence, cast
+from typing import Callable, Dict, List, Optional, Tuple, Sequence, cast
 
 # ---------- Naming & _THEME ----------
 _THEME = {
@@ -38,7 +38,7 @@ _SORT_LABELS = [
     ("Ergonomische Optimierung", "ergo"),
     ("Ökologische Optimierung", "eco"),
     ("Kosten Optimierung", "cost"),
-    ("Dreiecksfläche", "area"),
+    ("Gesamtwert", "area"),
 ]
 
 _CONSTANTS = {
@@ -323,7 +323,7 @@ def _compute_order(kind:str, scores:pd.DataFrame, original_order: List[int]) -> 
 
 
 
-def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: List[str]) -> w.VBox:
+def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: List[str], on_toggle: Optional[Callable[[int, bool], None]] = None) -> w.VBox:
     # build main large spider
     big_card, big_fig, index_to_trace = _build_big_radar(scores, list(scores.index), height, width, names)
 
@@ -380,6 +380,8 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
             active[_idx] = new_state
             live_mini = _card.children[0]
             _apply_state(_idx, new_state, big_fig, index_to_trace, live_mini, _card)
+            if on_toggle:
+                on_toggle(_idx, new_state)
         clicker.on_dom_event(_on_click)
 
         hoverer = ev.Event(source=card, watched_events=["mouseenter", "mouseleave"])

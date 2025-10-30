@@ -29,6 +29,19 @@ _TABLE_CSS = w.HTML("""
     width: 100% !important;
     display: block;
   }
+  .muted-row {
+   background-color: #e5e7eb !important;  /* neutral light grey */
+    }
+
+    /* Make the text look muted too */
+    .muted-row .tbl-label {
+    color: #6b7280 !important; /* grey text */
+    }
+
+    /* If a row is both selected + muted, keep it readable */
+    .selected-background.muted-row {
+    background-color: #d1d5db !important;  /* slightly darker grey */
+    }
 </style>
 """, layout=w.Layout(display="none"))
 
@@ -95,6 +108,7 @@ class Table:
         self.width = width
         self.is_visible = is_visible
         self._selected: int = -1
+        self._muted: set[int] = set()
 
         # Build the main grid (header + body)
         self.grid = w.GridBox(
@@ -186,6 +200,13 @@ class Table:
         self.grid.layout.grid_template_rows = f"auto repeat({len(self._row_cells)}, auto)"
         self._selected = -1
 
+        for idx in list(self._muted):
+            if idx < len(self._row_cells):
+                for cell in self._row_cells[idx]:
+                    cell.add_class("muted-row")
+            else:
+                self._muted.discard(idx)
+
     def set_visibility(self, is_visible: bool) -> None:
         """
         Show/hide the whole table wrapper.
@@ -230,3 +251,22 @@ class Table:
             self._row_cells.append(row_cells)
 
         return cells
+    
+    def set_row_muted(self, index: int, muted: bool) -> None:
+        if index < 0 or index >= len(self._row_cells):
+            return
+        if muted:
+            self._muted.add(index)
+            for cell in self._row_cells[index]:
+                cell.add_class("muted-row")
+        else:
+            if index in self._muted:
+                self._muted.remove(index)
+            for cell in self._row_cells[index]:
+                cell.remove_class("muted-row")
+
+    def mute_row(self, index: int) -> None:
+        self.set_row_muted(index, True)
+
+    def unmute_row(self, index: int) -> None:
+        self.set_row_muted(index, False)

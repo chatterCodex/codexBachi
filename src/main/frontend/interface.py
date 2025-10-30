@@ -51,7 +51,7 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
 
     # Radar chart
     scores = vd.make_radar_scores(_NAMES["axes"])
-    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
+    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"], on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx))
 
     # Overview table (no title by design)
     overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
@@ -113,7 +113,7 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
 
     # Radar chart
     scores = vd.make_radar_scores(_NAMES["axes"])
-    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
+    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"], on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx))
 
     # Overview table (no title by design)
     overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
