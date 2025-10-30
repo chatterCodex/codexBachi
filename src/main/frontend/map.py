@@ -1,82 +1,63 @@
 from typing import List, Dict, Any, Optional
-import math
 import ipywidgets as w
 import plotly.express as px
 import plotly.graph_objects as go
 
 
-THEME = {
-    "border-radius": "12px",
-}
+THEME = {"border-radius": "12px"}
 
 
 class Map:
-    def __init__(self, map_data: Dict[str, Any], title: str):
-        """
-        map_data is vd.map from VizData, e.g.:
+    """
+    This component receives vd.map from VizData and renders:
+      - trees (with precomputed per-tree colors for each optimization)
+      - cable corridors as polylines
+      - tail anchors and road anchors
+      - fixed-frame square layout in a green-ish card
 
-        {
-            "tree_x": [...],
-            "tree_y": [...],
-            "tree_bhd_cm": [...],
-            "tree_assignment": [...],            # per-tree real corridor index
-            "color_map": { real_idx: "#hex", ...},
-            "corridors": {
-                real_idx: {
-                    "xs": [...],
-                    "ys": [...],
-                    "start": (x0,y0),
-                    "end":   (x1,y1),
-                    "tail_anchor": {"x":..,"y":..,"BHD":..},
-                    "road_anchors": [{"x":..,"y":..,"BHD":..}, ...],
-                    "length_m": float,
-                    "volume_m3": float,
-                },
-                ...
-            },
-            "x_range": (minx, maxx),
-            "y_range": (miny, maxy),
-        }
-        """
+    Coloring logic:
+    - No optimization selected       -> all trees green            (tree_color_default)
+    - An optimization row selected   -> tree_colors_by_model[row_idx]
+    - A custom selection of lines    -> tree_colors_by_selection[tuple(lines)]
+    - Union selection (all lines)    -> tree_colors_by_union
+    """
+
+    def __init__(self, map_data: Dict[str, Any], title: str):
         self.data = map_data
 
-        # soft neutral styles (no harsh black)
+        # neutral colors for "unselected" corridors and markers
         self._neutral_line = "rgba(120,120,120,0.45)"
         self._neutral_marker = "rgba(120,120,120,0.65)"
 
-        # plotly qualitative palette (used for selected corridors)
+        # base palette for selected corridors
         self._palette = px.colors.qualitative.Plotly
 
-        # which real corridor indices are currently selected/highlighted
+        # keep track of which corridors are active
         self._selected_set: set[int] = set()
 
-        # (optional) external legend widgets, if you ever add them
+        # (optional) legend widgets
         self._legend_items: Dict[int, Dict[str, Any]] = {}
 
-        # build base figure
+        # build the figure once
         self.fig = self._build_base_figure()
 
-        # make sure the axes are using a global square view (not zoomed to first traces)
-        self._apply_axis_ranges(pad_ratio=0.2)
+        # make sure axes show the bbox (from data_prep) with no extra huge padding
+        self._apply_axis_ranges(pad_ratio=0.0)
 
-        # title above plot
+        # pretty title widget (outside the figure)
         self._title_html = w.HTML(
-            f"<div style='font-weight:600; font-size:16px; line-height:1.2; margin:0 0 8px 0;'>{title}</div>",
+            f"<div style='font-weight:600; font-size:16px; line-height:1.2; margin:0 0 8px 0;'>{title}</div>"
         )
 
-        # CSS helper for rounded border
+        # CSS helper to round the border box
         self._BORDER_RADIUS_CSS = w.HTML(
-            (
-                "<style>"
-                ".border-radius, .border-radius { "
-                f"border-radius: {THEME['border-radius']} !important;"
-                "}"
-                "</style>"
-            ),
+            "<style>.border-radius, .border-radius { "
+            f"border-radius: {THEME['border-radius']} !important; "
+            "}</style>",
             layout=w.Layout(display="none"),
         )
 
-        # fixed-size card around the figure so the green frame lines up perfectly
+        # fixed-size card (so border lines up and doesn't stretch weirdly)
         fixed_w, fixed_h = 1200, 900
         self.fig_card = w.Box(
             [self.fig],
@@ -92,22 +73,24 @@ class Map:
         )
         self.fig_card.add_class("border-radius")
 
-        # vertical stack: title + figure card
+        # vertical stack = title + card
         self._stack = w.VBox(
             [self._title_html, self.fig_card],
             layout=w.Layout(width="auto"),
         )
 
-        # outer container shown in the UI
+        # outer container that interface.py can place directly
         self.container = w.HBox(
             [self._BORDER_RADIUS_CSS, self._stack],
             layout=w.Layout(align_items="flex-start", gap="16px"),
         )
 
-    # ---------------- Public API ----------------
+    # ------------------------------------------------------------------
+    # Public API for interface.py
+    # ------------------------------------------------------------------
 
     def get_map_widget(self) -> w.Widget:
-        """Return the widget to be inserted into the main interface layout."""
+        """Return the widget you can drop into your interface layout."""
         return self.container
 
     def update_map(
@@ -116,65 +99,59 @@ class Map:
         selected_lines: Optional[List[int]] = None,
     ) -> None:
         """
-        Called from interface._on_select_with_vd().
-        - selected_lines is a list of REAL corridor indices of the chosen optimization result.
-        - If nothing is selected, show ALL corridors in neutral gray,
-          and paint ALL trees green.
-        - If something is selected, only those corridors get vivid colors,
-          and trees are colored by their assigned corridor if that corridor is selected.
+        Recolor and toggle visibility:
+        - corridors:
+            * none selected -> all corridors visible in neutral gray
+            * selection -> only those corridors visible in palette colors
+        - trees:
+            * choose correct precomputed color list from self.data
         """
-        # normalize indices
-        indices: List[int] = []
+
+        # Normalize "selected_lines" into a clean Python list[int]
+        ordered_indices: List[int] = []
         if selected_lines is not None:
             if hasattr(selected_lines, "tolist"):
                 selected_lines = selected_lines.tolist()
             if isinstance(selected_lines, (list, tuple)):
-                indices = [int(x) for x in selected_lines]
+                ordered_indices = [int(x) for x in selected_lines]
             elif selected_lines != []:
-                indices = [int(selected_lines)]
+                ordered_indices = [int(selected_lines)]
 
-        # keep tree layers visible always; we recolor markers below
+        # Keep the tree layers visible always
         for tr in self.fig.data:
             if getattr(tr, "name", None) in ("Bäume", "Stützbäume"):
                 tr.visible = True
 
         # ------------------------------------------------------------------
-        # CASE 1: no optimization result selected
+        # CASE A: no optimization row / no corridors selected
+        # -> all corridors neutral gray, trees solid green
         # ------------------------------------------------------------------
-        if len(indices) == 0:
+        if len(ordered_indices) == 0:
             self._selected_set = set()
 
-            # show every corridor in neutral gray
             for tr in self.fig.data:
                 lg = getattr(tr, "legendgroup", None)
                 if lg == "line":
-                    # cable corridor polyline
                     tr.visible = True
                     tr.line.color = self._neutral_line
                     tr.line.width = 0.8
-                    # neutral hover is fine; leave template as-is
                 elif lg in ("tail-conn", "road-conn"):
-                    # dotted helper connections
                     tr.visible = True
                     tr.line.color = self._neutral_line
                     tr.line.width = 1.2
                 elif lg in ("tail-marker", "road-marker"):
-                    # triangle markers at anchors
                     tr.visible = True
                     tr.marker.color = self._neutral_marker
 
-            # all trees pure green in this state
-            if len(self.fig.data) > 0:
+            # trees = precomputed default colors (all green)
+            default_colors = self.data.get("tree_color_default", None)
+            if default_colors:
+                self.fig.data[0].marker.color = default_colors
+            else:
                 self.fig.data[0].marker.color = "green"
 
-            # legend maintenance if you add external legend later
-            for ridx, item in self._legend_items.items():
-                item["chk"].value = False
-                item["chk"].disabled = False
-                self._paint_swatch(item["box"], self._neutral_line)
-
-            # keep global extents (don't zoom in on anything)
-            self._apply_axis_ranges(pad_ratio=0.2)
+            # lock axes to bbox again
+            self._apply_axis_ranges(pad_ratio=0.0)
 
             try:
                 self.fig.batch_animate()
@@ -183,124 +160,143 @@ class Map:
             return
 
         # ------------------------------------------------------------------
-        # CASE 2: we have a selection (an optimization result is chosen)
+        # CASE B: we have a corridor selection
+        # -> hide all corridors first;
+        # -> bring back only selected corridors in vivid colors
         # ------------------------------------------------------------------
-        # hide everything by default (except trees)
         for tr in self.fig.data:
             if getattr(tr, "name", None) in ("Bäume", "Stützbäume"):
                 continue
             tr.visible = False
 
-        # consistent color mapping for these selected corridors
-        # order is stable, first occurrence wins
-        sel_order = list(dict.fromkeys(int(x) for x in indices))
+        # stable order without duplicates
+        sel_order = list(dict.fromkeys(int(x) for x in ordered_indices))
+        self._selected_set = set(sel_order)
+
+        # color mapping for corridors
         sel_color_map = {
             real_idx: self._palette[i % len(self._palette)]
             for i, real_idx in enumerate(sel_order)
         }
-        self._selected_set = set(sel_order)
 
-        # activate and color only the selected corridors / anchors
+        # Turn on each chosen corridor + anchors with its color
         for real_idx in sel_order:
-            cr_color = sel_color_map[int(real_idx)]
-
+            c = sel_color_map[int(real_idx)]
             for tr in self.fig.data:
                 if getattr(tr, "meta", None) != int(real_idx):
                     continue
-
                 lg = getattr(tr, "legendgroup", None)
 
                 if lg == "line":
                     tr.visible = True
-                    tr.line.color = cr_color
+                    tr.line.color = c
                     tr.line.width = 4.5
-                    # vivid hover with length + volume (customdata was attached)
-                    tr.hovertemplate = (
-                        "Seiltrasse %{customdata[0]}<br>"
-                        "Seillänge: %{customdata[1]:.1f} m<br>"
-                        "Volumen: %{customdata[2]:.1f} m³<extra></extra>"
-                    )
 
                 elif lg in ("tail-marker", "road-marker"):
                     tr.visible = True
-                    tr.marker.color = cr_color
+                    tr.marker.color = c
 
                 elif lg in ("tail-conn", "road-conn"):
                     tr.visible = True
-                    tr.line.color = cr_color
+                    tr.line.color = c
                     tr.line.width = 1.6
 
-        # update external legend swatches (if any UI around it exists)
-        for ridx, item in self._legend_items.items():
-            if ridx in self._selected_set:
-                item["chk"].value = True
-                item["chk"].disabled = False
-                self._paint_swatch(item["box"], sel_color_map[ridx])
-            else:
-                item["chk"].value = False
-                item["chk"].disabled = False
-                self._paint_swatch(item["box"], self._neutral_line)
+        # ------------------------------------------------------------------
+        # TREE COLORS for the selection
+        # Priority:
+        #   1. selected_index (model row index)
+        #   2. tuple(ordered_indices) from selected_lines
+        #   3. union colors if this matches union
+        #   4. fallback: default all-green
+        # ------------------------------------------------------------------
+        colors_for_trees = None
 
-        # recolor trees:
-        #   - trees assigned to selected corridors get that corridor's color
-        #   - all other trees are dimmed gray
-        self._apply_tree_colors_selected(sel_order, sel_color_map)
+        # 1) if interface gave us the model row index
+        if selected_index is not None:
+            model_tree_colors = self.data.get("tree_colors_by_model", {})
+            colors_for_trees = model_tree_colors.get(int(selected_index))
 
-        # lock back to global view so we don't zoom to only chosen lines
-        self._apply_axis_ranges(pad_ratio=0.2)
+        # 2) if only lines are passed (maybe manual selection)
+        if colors_for_trees is None and ordered_indices:
+            key = tuple(ordered_indices)
+            by_sel = self.data.get("tree_colors_by_selection", {})
+            colors_for_trees = by_sel.get(key)
+
+        # 3) if they're effectively "union"
+        if colors_for_trees is None:
+            indices_to_show = self.data.get("indices_to_show", [])
+            if indices_to_show and tuple(ordered_indices) == tuple(indices_to_show):
+                colors_for_trees = self.data.get("tree_colors_by_union")
+
+        # 4) fallback to default (all green)
+        if not colors_for_trees:
+            colors_for_trees = self.data.get(
+                "tree_color_default",
+                ["green"] * len(self.fig.data[0].x),
+            )
+
+        # actually apply new marker colors to tree layer
+        self.fig.data[0].marker.color = colors_for_trees
+
+        # keep bbox (no extra padding because we already padded 10m in data_prep)
+        self._apply_axis_ranges(pad_ratio=0.0)
 
         try:
             self.fig.batch_animate()
         except Exception:
             pass
 
-    # ---------------- Internals ----------------
+    # ------------------------------------------------------------------
+    # Internal builders
+    # ------------------------------------------------------------------
 
     def _build_base_figure(self) -> go.FigureWidget:
         """
-        Build the static layers:
-        - tree scatter
-        - (optional) support trees
-        - cable corridors (polylines)
-        - anchors and connector lines
+        Create the static traces:
+          - all trees
+          - (optional) support trees
+          - each corridor polyline
+          - each corridor's tail & road anchors + connectors
         """
         fig = go.FigureWidget()
 
-        # --- Tree layer ----------------------------------------------------
+        # ----------------------------------------------------------
+        # 1. Trees layer
+        # ----------------------------------------------------------
         tree_x = self.data.get("tree_x", [])
         tree_y = self.data.get("tree_y", [])
         tree_bhd = self.data.get("tree_bhd_cm", [])
 
-        # attach BHD per tree in hover
-        if len(tree_bhd) == len(tree_x):
-            tree_custom = [[b] for b in tree_bhd]
-        else:
-            tree_custom = None
+        tree_custom = [[b] for b in tree_bhd] if len(tree_bhd) == len(tree_x) else None
+
+        default_tree_color = self.data.get("tree_color_default", "green")
 
         fig.add_trace(
             go.Scatter(
                 x=tree_x,
                 y=tree_y,
                 mode="markers",
-                marker=dict(symbol="circle", size=5, color="green"),  # default state: all green
+                marker=dict(
+                    symbol="circle",
+                    size=5,
+                    color=default_tree_color,
+                ),
                 name="Bäume",
+                customdata=tree_custom,
                 hovertemplate=(
                     "X: %{x:.2f}<br>"
                     "Y: %{y:.2f}<br>"
                     "BHD: %{customdata[0]:.1f} cm<extra></extra>"
                 )
                 if tree_custom
-                else (
-                    "X: %{x:.2f}<br>"
-                    "Y: %{y:.2f}<extra></extra>"
-                ),
-                customdata=tree_custom,
+                else "X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
                 showlegend=False,
             )
         )
 
-        # --- Support / mast trees (optional square markers) ----------------
-        # If mask provided (bool per tree), highlight those trees as squares.
+        # ----------------------------------------------------------
+        # 2. Optional support/mast trees
+        # ----------------------------------------------------------
         support_mask = self.data.get("support_tree_mask", None)
         if isinstance(support_mask, (list, tuple)) and len(support_mask) == len(tree_x):
             sup_x = [tree_x[i] for i, m in enumerate(support_mask) if m]
@@ -325,20 +321,20 @@ class Map:
             )
         )
 
-        # --- Cable corridors + anchors -------------------------------------
-        corridors_data: Dict[Any, Any] = self.data.get("corridors", {})
-        for real_idx, corr in corridors_data.items():
+        # ----------------------------------------------------------
+        # 3. Corridors + anchors
+        # ----------------------------------------------------------
+        corridors = self.data.get("corridors", {})
+        for real_idx, corr in corridors.items():
             xs = corr.get("xs", [])
             ys = corr.get("ys", [])
 
-            # length & volume (from precomputed map payload)
+            # Pre-store hover data (corridor id, length, volume)
             line_len = corr.get("length_m", 0.0)
             line_vol = corr.get("volume_m3", 0.0)
-
-            # we want stable per-line hover even when recoloring later
             cd = [[int(real_idx), float(line_len), float(line_vol)]]
 
-            # main corridor polyline
+            # main cable corridor polyline, initially neutral gray
             fig.add_trace(
                 go.Scatter(
                     x=xs,
@@ -348,23 +344,19 @@ class Map:
                     name=f"{int(real_idx) + 1}",
                     meta=int(real_idx),
                     legendgroup="line",
+                    customdata=cd,
                     hovertemplate=(
                         "Seiltrasse %{customdata[0]}<br>"
                         "Seillänge: %{customdata[1]:.1f} m<br>"
                         "Volumen: %{customdata[2]:.1f} m³<extra></extra>"
                     ),
-                    customdata=cd,
                     visible=True,
                 )
             )
 
-            # tail anchor marker
+            # Tail anchor marker
             tail = corr.get("tail_anchor", {})
-            t_bhd = tail.get("BHD", None)
-            if t_bhd is not None:
-                t_cd = [[t_bhd]]
-            else:
-                t_cd = None
+            t_cd = [[tail.get("BHD")]] if tail.get("BHD") is not None else None
 
             fig.add_trace(
                 go.Scatter(
@@ -396,7 +388,7 @@ class Map:
                 )
             )
 
-            # connector line: corridor end -> tail anchor
+            # Connector from corridor end -> tail anchor
             fig.add_trace(
                 go.Scatter(
                     x=[corr["end"][0], tail.get("x")],
@@ -416,15 +408,11 @@ class Map:
                 )
             )
 
-            # road anchors and connectors from start
+            # Road anchors (possibly multiple), plus dotted connectors from start
             for ra in corr.get("road_anchors", []):
-                ra_bhd = ra.get("BHD", None)
-                if ra_bhd is not None:
-                    ra_cd = [[ra_bhd]]
-                else:
-                    ra_cd = None
+                ra_cd = [[ra.get("BHD")]] if ra.get("BHD") is not None else None
 
-                # road anchor marker
+                # Road anchor marker
                 fig.add_trace(
                     go.Scatter(
                         x=[ra.get("x")],
@@ -455,7 +443,7 @@ class Map:
                     )
                 )
 
-                # dotted connector from corridor start to road anchor
+                # dotted connector start -> road anchor
                 fig.add_trace(
                     go.Scatter(
                         x=[corr["start"][0], ra.get("x")],
@@ -475,7 +463,9 @@ class Map:
                     )
                 )
 
-        # --- Figure layout -------------------------------------------------
+        # ----------------------------------------------------------
+        # 4. Layout and axes styling
+        # ----------------------------------------------------------
         fixed_w, fixed_h = 1200, 900
         fig.update_layout(
             autosize=False,
@@ -489,10 +479,11 @@ class Map:
             legend=dict(itemsizing="constant"),
         )
 
-        # lock aspect ratio so x/y are same scale (meters → meters)
+        # Lock meters: 1:1 aspect ratio (no stretching)
         fig.update_xaxes(scaleanchor="y", scaleratio=1)
+        fig.update_yaxes(scaleanchor="x", scaleratio=1)
 
-        # if VizData already gave us ranges, apply them tentatively
+        # apply VizData-provided extents once
         if self.data.get("x_range"):
             fig.update_xaxes(range=list(self.data["x_range"]))
         if self.data.get("y_range"):
@@ -500,121 +491,28 @@ class Map:
 
         return fig
 
-    # ---- Coloring helpers for trees --------------------------------------
-
-    def _apply_tree_colors_selected(
-        self,
-        sel_order: List[int],
-        sel_color_map: Dict[int, str],
-    ) -> None:
+    def _apply_axis_ranges(self, pad_ratio: float = 0.0) -> None:
         """
-        When corridors are selected:
-        - trees assigned to selected corridors get that corridor's color
-        - all other trees go neutral gray
+        Force a square-ish viewport based on the global bounding box in map_data.
+        We already padded the bbox by 10m in data_prep, so default pad_ratio=0.0.
         """
-        if not self.fig.data:
-            return
-        if self.fig.data[0].name != "Bäume":
-            return
-
-        tree_assign = self.data.get("tree_assignment", None)
-        if not (
-            isinstance(tree_assign, (list, tuple))
-            and len(self.fig.data[0].x) == len(tree_assign)
-        ):
-            # fallback: just leave trees green
-            self.fig.data[0].marker.color = "green"
-            return
-
-        sel_set = set(sel_order)
-
-        def _sel_color(lbl):
-            try:
-                ilbl = int(lbl)
-            except Exception:
-                return self._neutral_marker
-            # dim invalid/negative
-            if ilbl < 0:
-                return self._neutral_marker
-            # highlight only selected corridors
-            if ilbl in sel_set:
-                return sel_color_map.get(
-                    ilbl,
-                    self._palette[ilbl % len(self._palette)],
-                )
-            return self._neutral_marker
-
-        self.fig.data[0].marker.color = [_sel_color(lbl) for lbl in tree_assign]
-
-    # ---- Axis helper -----------------------------------------------------
-
-    def _apply_axis_ranges(self, pad_ratio: float = 0.2) -> None:
-        """
-        Force a global square viewport that covers all trees/corridors.
-        pad_ratio is extra fractional padding around the bounding box.
-        This keeps the map from zooming in too much and keeps the green
-        border box nicely aligned.
-        """
-        # prefer the precomputed extents from VizData
         xr = self.data.get("x_range")
         yr = self.data.get("y_range")
-
         if xr is None or yr is None:
-            # fallback: compute from traces
-            all_x: List[float] = []
-            all_y: List[float] = []
-            for tr in self.fig.data:
-                xs = getattr(tr, "x", None)
-                ys = getattr(tr, "y", None)
-                if xs is not None:
-                    all_x.extend(v for v in xs if v is not None)
-                if ys is not None:
-                    all_y.extend(v for v in ys if v is not None)
+            return
 
-            if not all_x or not all_y:
-                return
+        minx, maxx = xr
+        miny, maxy = yr
 
-            minx, maxx = min(all_x), max(all_x)
-            miny, maxy = min(all_y), max(all_y)
-        else:
-            minx, maxx = xr
-            miny, maxy = yr
-
-        # center + span
         cx = 0.5 * (minx + maxx)
         cy = 0.5 * (miny + maxy)
-        span_x = maxx - minx
-        span_y = maxy - miny
-        span = max(span_x, span_y)
 
-        # pad and make square
+        span = max(maxx - minx, maxy - miny)
         span *= (1.0 + pad_ratio)
         half = 0.5 * span
 
-        final_x = (cx - half, cx + half)
-        final_y = (cy - half, cy + half)
+        target_x = [cx - half, cx + half]
+        target_y = [cy - half, cy + half]
 
-        self.fig.update_xaxes(range=list(final_x), scaleanchor="y", scaleratio=1)
-        self.fig.update_yaxes(range=list(final_y))
-
-    # ---- Misc small helpers ---------------------------------------------
-
-    def _polyline_length(self, xs: List[float], ys: List[float]) -> float:
-        """Euclidean length of a polyline given x/y vertices."""
-        if not xs or not ys or len(xs) != len(ys):
-            return 0.0
-        total = 0.0
-        for i in range(1, len(xs)):
-            dx = xs[i] - xs[i - 1]
-            dy = ys[i] - ys[i - 1]
-            total += math.hypot(dx, dy)
-        return total
-
-    def _paint_swatch(self, box: w.HTML, color: str) -> None:
-        """If you ever wire up external legend items, this colors their little squares."""
-        box.value = (
-            "<div "
-            "style='width:14px;height:14px;"
-            f"background:{color};border:1px solid #777;'>"
-            "</div>"
-        )
+        self.fig.update_xaxes(range=target_x, scaleanchor="y", scaleratio=1)
+        self.fig.update_yaxes(range=target_y, scaleanchor="x", scaleratio=1)

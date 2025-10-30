@@ -324,15 +324,18 @@ def _compute_order(kind:str, scores:pd.DataFrame, original_order: List[int]) -> 
 
 
 def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: List[str]) -> w.VBox:
-
+    # build main large spider
     big_card, big_fig, index_to_trace = _build_big_radar(scores, list(scores.index), height, width, names)
 
+    # build 3x3 minis
     grid_height = max(60, height - _CONSTANTS["sort_bar_height"] - _CONSTANTS["sort_bar_gap"])
     grid, minis_by_idx, cards_by_idx, area_ids = _build_radar_grid(scores, grid_height, width, names)
 
+    # which minis are active initially
     active: Dict[int, bool] = {idx: True for idx in minis_by_idx.keys()}
     original_order: List[int] = list(scores.index[:9])
 
+    # sorting UI
     sort_dropdown = w.Dropdown(options=_SORT_LABELS, value="original", layout=w.Layout(width=f"{width}px"))
     sort_label = w.HTML("<span class='sort-label'><b>Sortierung:</b></span>")
     sort_bar = w.HBox(
@@ -345,6 +348,7 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
         )
     )
 
+    # holding the sort bar + mini grid
     grid_card = w.VBox(
         [sort_bar, grid], 
         layout=w.Layout(
@@ -366,6 +370,7 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
 
     sort_dropdown.observe(lambda ch: _apply_sort(ch["new"]) if ch["name"] == "value" else None, names="value")
 
+    # wire up click/hover interactions for each mini card
     for idx in minis_by_idx.keys():
         card = cards_by_idx[idx]
 
@@ -387,17 +392,34 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
                 _apply_state(_idx, active[_idx], big_fig, index_to_trace, live_mini, _card)
         hoverer.on_dom_event(_on_hover)
 
-    # Initial paint
+    # initial paint of styles
     for idx in minis_by_idx.keys():
         _apply_state(idx, True, big_fig, index_to_trace, minis_by_idx[idx], cards_by_idx[idx])
 
+    # NEW: required title, left aligned, bold
+    title_html = w.HTML(
+        (
+            "<div style='"
+            "font-weight:700;"
+            "text-align:left;"
+            "margin:0 0 6px 0;"
+            "width:100%;"
+            "font-size:14px;"
+            "'>"
+            "Vergleich der Seiltrassenmodelle"
+            "</div>"
+        ),
+        layout=w.Layout(width="100%")
+    )
+
+    # wrap everything, include title first
     container = w.VBox(
-        [big_card, grid_card, _BORDER_RADIUS_CSS, _POINTER_CSS, _DROPDOWN_CSS],
+        [title_html, big_card, grid_card, _BORDER_RADIUS_CSS, _POINTER_CSS, _DROPDOWN_CSS],
         layout=w.Layout(
             width="100%",
             display="flex",
             flex_flow="row wrap",
-            align_items="flex-start",
+            align_items="flex-start",        # keep left alignment
             justify_content="center",
         )
     )

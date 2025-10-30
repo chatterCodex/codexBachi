@@ -53,12 +53,12 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
     scores = vd.make_radar_scores(_NAMES["axes"])
     radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
 
-    # Overview table (precomputed for all models)
-    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500)
+    # Overview table (no title by design)
+    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
 
-    # Detail tables (empty/hidden until a model is selected)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False)
-    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False)
+    # Detail tables (now with titles)
+    selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False, title="Aktivierte Seiltrassen")
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
     selector = ResultSelector(
@@ -115,12 +115,12 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
     scores = vd.make_radar_scores(_NAMES["axes"])
     radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"])
 
-    # Overview table (precomputed for all models)
-    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500)
+    # Overview table (no title by design)
+    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
 
-    # Detail tables (empty/hidden until a model is selected)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False)
-    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False)
+    # Detail tables (now with titles)
+    selected_table = Table(_NAMES["table_selected_headers"], [], 750, is_visible=False, title="Aktivierte Seiltrassen")
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
     selector = ResultSelector(
