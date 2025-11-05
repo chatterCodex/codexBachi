@@ -88,10 +88,20 @@ class Map:
         )
         self.fig_card.add_class("border-radius")
 
+        self._scroll_wrapper = w.Box(
+            [self.fig_card],
+            layout=w.Layout(
+                overflow_x="auto",
+                overflow_y="hidden",
+                width="100%",
+                max_width="100%"
+            )
+        )
+
         # vertical stack = title + card
         self._stack = w.VBox(
-            [self._title_html, self.fig_card],
-            layout=w.Layout(width="auto"),
+            [self._title_html, self._scroll_wrapper],
+            layout=w.Layout(width="100%"),
         )
 
         # outer container that interface.py can place directly
@@ -134,7 +144,7 @@ class Map:
 
         # Keep the tree layers visible always
         for tr in self.fig.data:
-            if getattr(tr, "name", None) in ("Bäume", "Stützbäume"):
+            if getattr(tr, "name", None) == "Bäume":
                 tr.visible = True
 
         # ------------------------------------------------------------------
@@ -154,7 +164,7 @@ class Map:
                     tr.visible = True
                     tr.line.color = self._neutral_line
                     tr.line.width = 1.2
-                elif lg in ("tail-marker", "road-marker"):
+                elif lg in ("tail-marker", "road-marker", "support-marker"):
                     tr.visible = True
                     tr.marker.color = self._neutral_marker
 
@@ -180,7 +190,7 @@ class Map:
         # -> bring back only selected corridors in vivid colors
         # ------------------------------------------------------------------
         for tr in self.fig.data:
-            if getattr(tr, "name", None) in ("Bäume", "Stützbäume"):
+            if getattr(tr, "name", None) == "Bäume":
                 continue
             tr.visible = False
 
@@ -215,6 +225,10 @@ class Map:
                     tr.visible = True
                     tr.line.color = c
                     tr.line.width = 1.6
+
+                elif lg == "support-marker":
+                    tr.visible = True
+                    tr.marker.color = c
 
         # ------------------------------------------------------------------
         # TREE COLORS for the selection
@@ -313,12 +327,15 @@ class Map:
         # ----------------------------------------------------------
         # 2. Optional support/mast trees
         # ----------------------------------------------------------
-        support_mask = self.data.get("support_tree_mask", None)
-        if isinstance(support_mask, (list, tuple)) and len(support_mask) == len(tree_x):
-            sup_x = [tree_x[i] for i, m in enumerate(support_mask) if m]
-            sup_y = [tree_y[i] for i, m in enumerate(support_mask) if m]
-        else:
-            sup_x, sup_y = [], []
+        support_by_corr = self.data.get("support_trees_by_corridor", {})
+        support_legend_added = False
+
+        if support_by_corr:
+            for real_idx, tree_indices in support_by_corr.items():
+                sup_x = [tree_x[i] for i in tree_indices if 0 <= i < len(tree_x)]
+                sup_y = [tree_y[i] for i in tree_indices if 0 <= i < len(tree_x)]
+                if not sup_x:
+                    continue
 
         fig.add_trace(
             go.Scatter(
@@ -332,15 +349,46 @@ class Map:
                     line=dict(width=0),
                 ),
                 name="Stützbäume",
+                meta=int(real_idx),
+                legendgroup="support-marker",
                 hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
-                showlegend=False,
+                showlegend=not support_legend_added,
             )
+        )
+        support_legend_added = True
+
+        if not support_legend_added:
+            support_mask = self.data.get("support_tree_mask", None)
+            if isinstance(support_mask, (list, tuple)) and len(support_mask) == len(tree_x):
+                sup_x = [tree_x[i] for i, m in enumerate(support_mask) if m]
+                sup_y = [tree_y[i] for i, m in enumerate(support_mask) if m]
+            else:
+                sup_x, sup_y = [], []
+
+            fig.add_trace(
+                go.Scatter(
+                    x=sup_x,
+                    y=sup_y,
+                    mode="markers",
+                    marker=dict(
+                        symbol="square",
+                        size=8,
+                        color=self._neutral_marker,
+                        line=dict(width=0),
+                    ),
+                    name="Stützbäume",
+                    legendgroup="support-marker",
+                    hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+                    showlegend=True if sup_x else False,
+                )
         )
 
         # ----------------------------------------------------------
         # 3. Corridors + anchors
         # ----------------------------------------------------------
         corridors = self.data.get("corridors", {})
+        legend_tail_added = False
+        legend_road_added = False
         for real_idx, corr in corridors.items():
             xs = corr.get("xs", [])
             ys = corr.get("ys", [])
@@ -402,9 +450,10 @@ class Map:
                     ),
                     customdata=t_cd,
                     visible=True,
-                    showlegend=False,
+                    showlegend=not legend_tail_added,
                 )
             )
+            legend_tail_added = True
 
             # Connector from corridor end -> tail anchor
             fig.add_trace(
@@ -457,9 +506,11 @@ class Map:
                         ),
                         customdata=ra_cd,
                         visible=True,
-                        showlegend=False,
+                        showlegend=not legend_road_added,
                     )
                 )
+
+                legend_road_added = True
 
                 # dotted connector start -> road anchor
                 fig.add_trace(

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -567,6 +568,10 @@ class VizData:
         tree_x = [float(geom.x) for geom in gtrees.geometry]
         tree_y = [float(geom.y) for geom in gtrees.geometry]
 
+        tree_coords = None
+        if tree_x and tree_y:
+            tree_coords = np.column_stack((tree_x, tree_y))
+
         bhd_series = gtrees.get("BHD", pd.Series([None] * len(gtrees)))
         tree_bhd_cm = [None if pd.isna(b) else float(b) for b in bhd_series]
 
@@ -580,6 +585,9 @@ class VizData:
             int(real): int(self.real_to_display.get(int(real), int(real)))
             for real in self.indices_to_show
         }
+
+        support_coords: Set[Tuple[float, float]] = set()
+        support_indices_by_corridor: Dict[int, Set[int]] = defaultdict(set)
 
         for real_idx, row in subset.iterrows():
             line = row.geometry
@@ -640,6 +648,31 @@ class VizData:
                 volume_m3=volume_m3,
                 display_id=display_id,
             )
+
+            cr_object = row.get("Cable Road Object")
+            segments = getattr(cr_object, "supported_segments", None)
+            if not segments:
+                continue
+
+            for segment in segments[1:]:
+                support = getattr(segment, "start_support", None)
+                xy_location = getattr(support, "xy_location", None)
+                if xy_location is None:
+                    continue
+
+                x_val = round(float(xy_location.x), 4)
+                y_val = round(float(xy_location.y), 4)
+                coord_key = (x_val, y_val)
+                support_coords.add(coord_key)
+
+                if tree_coords is None:
+                    continue
+
+                diffs = tree_coords - np.array([x_val, y_val])
+                dist_sq = np.sum(diffs ** 2, axis=1)
+                nearest_idx = int(np.argmin(dist_sq))
+                if dist_sq[nearest_idx] <= 4.0:  # within 2 meters
+                    support_indices_by_corridor[int(real_idx)].add(nearest_idx)
 
         # ----------------------------------------------------------------------------------
         # Compute map extents like interface.py:
@@ -763,12 +796,37 @@ class VizData:
             for j, rid in enumerate(self.indices_to_show)
         }
 
+        # support tree mask derived from collected coordinates
+        if tree_x and tree_y and support_coords:
+            support_tree_indices: Set[int] = set()
+
+            for sx, sy in support_coords:
+                diffs = tree_coords - np.array([sx, sy])
+                dist_sq = np.sum(diffs ** 2, axis=1)
+                nearest_idx = int(np.argmin(dist_sq))
+                if dist_sq[nearest_idx] <= 4.0:  # within 2 meters
+                    support_tree_indices.add(nearest_idx)
+
+            support_tree_mask = [i in support_tree_indices for i in range(len(tree_x))]
+        else:
+            support_tree_mask = [False] * len(tree_x)
+
+        support_trees_by_corridor = {
+            int(rid): sorted(list(idxs))
+            for rid, idxs in support_indices_by_corridor.items()
+            if idxs
+        }
+
         # final map payload
         self.map = dict(
             # Trees
             tree_x=tree_x,
             tree_y=tree_y,
             tree_bhd_cm=tree_bhd_cm,
+
+            # Support trees
+            support_tree_mask=support_tree_mask,
+            support_trees_by_corridor=support_trees_by_corridor,
 
             # Precomputed tree colors
             tree_color_default=tree_color_default,
@@ -809,7 +867,11 @@ class VizData:
                 str([self.real_to_display.get(int(idx), int(idx)) for idx in sel_real])[1:-1],
                 layout.get("Max lateral Yarding Distance (m)"),
                 layout.get("Average lateral Yarding Distance (m)"),
-                int(np.mean(layout["Supports Amount"])) if layout.get("Supports Amount") else 0,
+                (
+                    round(float(np.mean(layout["Supports Amount"])), 2)
+                    if layout.get("Supports Amount")
+                    else 0.0
+                ),
                 layout.get("Cost per m3 (€)"),
                 layout.get("Volume per Meter (m3/m)"),
             ])
