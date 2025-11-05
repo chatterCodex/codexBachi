@@ -224,7 +224,7 @@ def _build_mini_radar(scores: pd.DataFrame, idx: int, axes: Sequence[str], theta
         x=0.5, y=0.02, xref="paper", yref="paper",
         text=f"{row['Name']}",
         showarrow=False, align="center",
-        font=dict(size=12, color=_THEME["text"]),
+        font=dict(size=13, color=_THEME["text"], family="Arial Black, Segoe UI Semibold, Inter, Arial, sans-serif"),
         bgcolor=_THEME["card_bg"],
         borderpad=0
     )
@@ -402,11 +402,11 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
     title_html = w.HTML(
         (
             "<div style='"
-            "font-weight:700;"
+            "font-weight:800;"
             "text-align:left;"
             "margin:0 0 6px 0;"
             "width:100%;"
-            "font-size:14px;"
+            "font-size:18px;"
             "'>"
             "Vergleich der Seiltrassenmodelle"
             "</div>"

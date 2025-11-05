@@ -576,6 +576,11 @@ class VizData:
 
         subset = fa.line_gdf.loc[idx_all] if len(idx_all) else fa.line_gdf.iloc[[]]
 
+        display_lookup = {
+            int(real): int(self.real_to_display.get(int(real), int(real)))
+            for real in self.indices_to_show
+        }
+
         for real_idx, row in subset.iterrows():
             line = row.geometry
             xs, ys = _sample_line_xy(line)
@@ -583,6 +588,8 @@ class VizData:
 
             length_m = _safe_float(row.get("line_length", 0.0))
             volume_m3 = _safe_float(volumes_by_idx.get(int(real_idx), 0.0))
+
+            display_id = display_lookup.get(int(real_idx), int(real_idx))
 
             # Tail anchor from END coords, BHD from end_* dict if available
             end_tree = getattr(row, "end_anchor_tree", None)
@@ -631,6 +638,7 @@ class VizData:
                 road_anchors=road_anchors_list,
                 length_m=length_m,
                 volume_m3=volume_m3,
+                display_id=display_id,
             )
 
         # ----------------------------------------------------------------------------------
@@ -772,6 +780,7 @@ class VizData:
             corridors=corridors,
             color_map=color_map,
             palette=self.palette,
+            display_lookup=display_lookup,
 
             # global extents (nice zoom from interface.py logic)
             x_range=x_range,

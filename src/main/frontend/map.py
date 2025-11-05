@@ -32,6 +32,10 @@ class Map:
         # base palette for selected corridors
         self._palette = px.colors.qualitative.Plotly
 
+        # lookup real corridor index -> filtered display id
+        dl = map_data.get("display_lookup", {})
+        self._display_lookup = {int(k): int(v) for k, v in dl.items()}
+
         # keep track of which corridors are active
         self._selected_set: set[int] = set()
 
@@ -42,12 +46,23 @@ class Map:
         self.fig = self._build_base_figure()
 
         # make sure axes show the bbox (from data_prep) with no extra huge padding
-        self._apply_axis_ranges(pad_ratio=0.0)
+        self._apply_axis_ranges(pad_ratio=0.35)
 
         # pretty title widget (outside the figure)
         self._title_html = w.HTML(
-            f"<div style='font-weight:600; font-size:16px; line-height:1.2; margin:0 0 8px 0;'>{title}</div>"
-        )
+                (
+                    "<div style='"
+                    "font-weight:800;"
+                    "text-align:left;"
+                    "margin:0 0 6px 0;"
+                    "width:100%;"
+                    "font-size:18px;"
+                    "'>"
+                    f"{title}"
+                    "</div>"
+                ),
+                layout=w.Layout(width="auto")
+            )
 
         # CSS helper to round the border box
         self._BORDER_RADIUS_CSS = w.HTML(
@@ -151,7 +166,7 @@ class Map:
                 self.fig.data[0].marker.color = "green"
 
             # lock axes to bbox again
-            self._apply_axis_ranges(pad_ratio=0.0)
+            self._apply_axis_ranges(pad_ratio=0.35)
 
             try:
                 self.fig.batch_animate()
@@ -239,7 +254,7 @@ class Map:
         self.fig.data[0].marker.color = colors_for_trees
 
         # keep bbox (no extra padding because we already padded 10m in data_prep)
-        self._apply_axis_ranges(pad_ratio=0.0)
+        self._apply_axis_ranges(pad_ratio=0.35)
 
         try:
             self.fig.batch_animate()
@@ -290,7 +305,8 @@ class Map:
                 )
                 if tree_custom
                 else "X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
-                showlegend=False,
+                showlegend=True,
+                legendgroup="trees",
             )
         )
 
@@ -328,11 +344,13 @@ class Map:
         for real_idx, corr in corridors.items():
             xs = corr.get("xs", [])
             ys = corr.get("ys", [])
+            display_id = self._display_lookup.get(int(real_idx), corr.get("display_id", int(real_idx)))
 
             # Pre-store hover data (corridor id, length, volume)
             line_len = corr.get("length_m", 0.0)
             line_vol = corr.get("volume_m3", 0.0)
-            cd = [[int(real_idx), float(line_len), float(line_vol)]]
+            base_custom = [int(display_id), float(line_len), float(line_vol)]
+            cd = [base_custom[:] for _ in xs]
 
             # main cable corridor polyline, initially neutral gray
             fig.add_trace(
@@ -341,12 +359,12 @@ class Map:
                     y=ys,
                     mode="lines",
                     line=dict(color=self._neutral_line, width=0.8),
-                    name=f"{int(real_idx) + 1}",
+                    name=f"{int(display_id)}",
                     meta=int(real_idx),
                     legendgroup="line",
                     customdata=cd,
                     hovertemplate=(
-                        "Seiltrasse %{customdata[0]}<br>"
+                        "Seiltrasse: %{customdata[0]}<br>"
                         "Seillänge: %{customdata[1]:.1f} m<br>"
                         "Volumen: %{customdata[2]:.1f} m³<extra></extra>"
                     ),

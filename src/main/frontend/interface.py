@@ -141,7 +141,7 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
     )
 
     # Detail tables (now with titles)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 850, is_visible=False, title="Aktivierte Seiltrassen")
+    selected_table = Table(_NAMES["table_selected_headers"], [], 1000, is_visible=False, title="Aktivierte Seiltrassen")
     anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
