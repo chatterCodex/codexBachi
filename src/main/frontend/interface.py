@@ -51,13 +51,24 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
 
     # Radar chart
     scores = vd.make_radar_scores(_NAMES["axes"])
-    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"], on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx))
+    radar_chart = build_radar_dashboard(
+        scores, 600, 750, _NAMES["axes"],
+        on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx)
+    )
 
     # Overview table (no title by design)
-    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
+    # NEW: add per-row "Auswählen" buttons that sync the ResultSelector
+    overview_table = Table(
+        _NAMES["table_overview_headers"],
+        vd.overview_rows,
+        1500,
+        title=None,
+        action_label="Auswählen",
+        on_action=lambda idx: selector.set_value(idx),  # selector is defined below; late-binding in lambda
+    )
 
     # Detail tables (now with titles)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 950, is_visible=False, title="Aktivierte Seiltrassen")
+    selected_table = Table(_NAMES["table_selected_headers"], [], 550, is_visible=False, title="Aktivierte Seiltrassen")
     anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
@@ -113,13 +124,24 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
 
     # Radar chart
     scores = vd.make_radar_scores(_NAMES["axes"])
-    radar_chart = build_radar_dashboard(scores, 600, 750, _NAMES["axes"], on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx))
+    radar_chart = build_radar_dashboard(
+        scores, 600, 750, _NAMES["axes"],
+        on_toggle=lambda idx, active: overview_table.unmute_row(idx) if active else overview_table.mute_row(idx)
+    )
 
     # Overview table (no title by design)
-    overview_table = Table(_NAMES["table_overview_headers"], vd.overview_rows, 1500, title=None)
+    # NEW: add per-row "Auswählen" buttons that sync the ResultSelector
+    overview_table = Table(
+        _NAMES["table_overview_headers"],
+        vd.overview_rows,
+        1500,
+        title=None,
+        action_label="Auswählen",
+        on_action=lambda idx: selector.set_value(idx),  # selector defined below; safe due to late-binding
+    )
 
     # Detail tables (now with titles)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 750, is_visible=False, title="Aktivierte Seiltrassen")
+    selected_table = Table(_NAMES["table_selected_headers"], [], 850, is_visible=False, title="Aktivierte Seiltrassen")
     anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
@@ -185,6 +207,7 @@ def _on_select_with_vd(
         return
 
     # Highlight selected model in overview
+    overview_table.clear_button_selection()
     overview_table.highlight_row(selected_index)
 
     # Get the display data for detail tables instantly (precomputed)

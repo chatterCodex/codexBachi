@@ -337,7 +337,7 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
 
     # sorting UI
     sort_dropdown = w.Dropdown(options=_SORT_LABELS, value="original", layout=w.Layout(width=f"{width}px"))
-    sort_label = w.HTML("<span class='sort-label'><b>Sortierung:</b></span>")
+    sort_label = w.HTML("<span class='sort-label'><b>Auswahl:</b></span>")
     sort_bar = w.HBox(
         [sort_label, sort_dropdown],
         layout=w.Layout(

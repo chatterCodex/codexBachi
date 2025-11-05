@@ -480,7 +480,7 @@ class Map:
         )
 
         # Lock meters: 1:1 aspect ratio (no stretching)
-        fig.update_xaxes(scaleanchor="y", scaleratio=1)
+        fig.update_xaxes(scaleanchor="y", scaleratio=0.5)
         fig.update_yaxes(scaleanchor="x", scaleratio=1)
 
         # apply VizData-provided extents once
