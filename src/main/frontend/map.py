@@ -1,3 +1,4 @@
+from os import truncate
 from typing import List, Dict, Any, Optional
 import ipywidgets as w
 import plotly.express as px
@@ -146,7 +147,10 @@ class Map:
 
         # Keep the tree layers visible always
         for tr in self.fig.data:
-            if getattr(tr, "name", None) == "Bäume":
+            if getattr(tr, "meta", None) == "legend-only":
+                tr.visible = True
+                continue
+            if getattr(tr, "name", None) == "trees":
                 tr.visible = True
 
         # ------------------------------------------------------------------
@@ -157,6 +161,9 @@ class Map:
             self._selected_set = set()
 
             for tr in self.fig.data:
+                if getattr(tr, "meta", None) == "legend-only":
+                    tr.visible = True
+                    continue
                 lg = getattr(tr, "legendgroup", None)
                 if lg == "line":
                     tr.visible = True
@@ -192,7 +199,8 @@ class Map:
         # -> bring back only selected corridors in vivid colors
         # ------------------------------------------------------------------
         for tr in self.fig.data:
-            if getattr(tr, "name", None) == "Bäume":
+            meta = getattr(tr, "meta", None)
+            if meta in ("legend-only", "trees"):
                 continue
             tr.visible = False
 
@@ -312,7 +320,7 @@ class Map:
                     size=5,
                     color=default_tree_color,
                 ),
-                name="Bäume",
+                name="Baum",
                 legendrank=0,
                 customdata=tree_custom,
                 hovertemplate=(
@@ -322,8 +330,27 @@ class Map:
                 )
                 if tree_custom
                 else "X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+                showlegend=False,
+                legendgroup="trees",
+                meta="trees",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker=dict(
+                    symbol="circle",
+                    size=6,
+                    color=self._neutral_marker,
+                ),
+                name="Bäume",
+                legendrank=0,
                 showlegend=True,
                 legendgroup="trees",
+                hoverinfo="skip",
+                meta="legend-only",
             )
         )
 
@@ -331,7 +358,7 @@ class Map:
         # 2. Optional support/mast trees
         # ----------------------------------------------------------
         support_by_corr = self.data.get("support_trees_by_corridor", {})
-        support_legend_added = False
+        support_present = False
 
         if support_by_corr:
             for real_idx, tree_indices in support_by_corr.items():
@@ -339,35 +366,6 @@ class Map:
                 sup_y = [tree_y[i] for i in tree_indices if 0 <= i < len(tree_x)]
                 if not sup_x:
                     continue
-
-        fig.add_trace(
-            go.Scatter(
-                x=sup_x,
-                y=sup_y,
-                mode="markers",
-                marker=dict(
-                    symbol="square",
-                    size=8,
-                    color=self._neutral_marker,
-                    line=dict(width=0),
-                ),
-                name="Stützbäume",
-                meta=int(real_idx),
-                legendgroup="support-marker",
-                legendrank=20,
-                hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
-                showlegend=not support_legend_added,
-            )
-        )
-        support_legend_added = True
-
-        if not support_legend_added:
-            support_mask = self.data.get("support_tree_mask", None)
-            if isinstance(support_mask, (list, tuple)) and len(support_mask) == len(tree_x):
-                sup_x = [tree_x[i] for i, m in enumerate(support_mask) if m]
-                sup_y = [tree_y[i] for i, m in enumerate(support_mask) if m]
-            else:
-                sup_x, sup_y = [], []
 
             fig.add_trace(
                 go.Scatter(
@@ -380,20 +378,72 @@ class Map:
                         color=self._neutral_marker,
                         line=dict(width=0),
                     ),
-                    name="Stützbäume",
+                    name="Stützbaum",
+                    meta=int(real_idx),
                     legendgroup="support-marker",
                     legendrank=20,
                     hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
-                    showlegend=True if sup_x else False,
+                    showlegend=False,
                 )
-        )
+            )
+            support_present = True
+
+        if not support_present:
+            support_mask = self.data.get("support_tree_mask", None)
+            if isinstance(support_mask, (list, tuple)) and len(support_mask) == len(tree_x):
+                sup_x = [tree_x[i] for i, m in enumerate(support_mask) if m]
+                sup_y = [tree_y[i] for i, m in enumerate(support_mask) if m]
+            else:
+                sup_x, sup_y = [], []
+
+            if sup_x:
+                fig.add_trace(
+                    go.Scatter(
+                        x=sup_x,
+                        y=sup_y,
+                        mode="markers",
+                        marker=dict(
+                            symbol="square",
+                            size=8,
+                            color=self._neutral_marker,
+                            line=dict(width=0),
+                        ),
+                        name="Stützbäume",
+                        legendgroup="support-marker",
+                        legendrank=20,
+                        hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+                        showlegend=False,
+                    )
+                )
+                support_present = True
+
+        if support_present:
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(
+                        symbol="square",
+                        size=8,
+                        color=self._neutral_marker,
+                        line=dict(width=0),
+                    ),
+                    name="Stützbaum",
+                    legendgroup="legend-support",
+                    legendrank=20,
+                    hoverinfo="skip",
+                    showlegend=True,
+                    meta="legend-only",
+                )
+            )
 
         # ----------------------------------------------------------
         # 3. Corridors + anchors
         # ----------------------------------------------------------
         corridors = self.data.get("corridors", {})
-        legend_tail_added = False
-        legend_road_added = False
+        tail_present = False
+        road_present = False
         for real_idx, corr in corridors.items():
             xs = corr.get("xs", [])
             ys = corr.get("ys", [])
@@ -436,7 +486,7 @@ class Map:
                     y=[tail.get("y")],
                     mode="markers",
                     marker=dict(
-                        symbol="triangle-up",
+                        symbol="triangle-down",
                         size=11,
                         color=self._neutral_marker,
                     ),
@@ -457,10 +507,10 @@ class Map:
                     ),
                     customdata=t_cd,
                     visible=True,
-                    showlegend=not legend_tail_added,
+                    showlegend=False,
                 )
             )
-            legend_tail_added = True
+            tail_present = True
 
             # Connector from corridor end -> tail anchor
             fig.add_trace(
@@ -493,7 +543,7 @@ class Map:
                         y=[ra.get("y")],
                         mode="markers",
                         marker=dict(
-                            symbol="triangle-down",
+                            symbol="triangle-up",
                             size=10,
                             color=self._neutral_marker,
                         ),
@@ -514,11 +564,11 @@ class Map:
                         ),
                         customdata=ra_cd,
                         visible=True,
-                        showlegend=not legend_road_added,
+                        showlegend=False,
                     )
                 )
 
-                legend_road_added = True
+                road_present = True
 
                 # dotted connector start -> road anchor
                 fig.add_trace(
@@ -539,6 +589,45 @@ class Map:
                         showlegend=False,
                     )
                 )
+        if tail_present:
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(
+                        symbol="triangle-up",
+                        size=11,
+                        color=self._neutral_marker,
+                    ),
+                    name="Tal Ankerbaum",
+                    legendgroup="tail-marker",
+                    legendrank=10,
+                    hoverinfo="skip",
+                    showlegend=True,
+                    meta="legend-only",
+                )
+            )
+
+        if road_present:
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(
+                        symbol="triangle-down",
+                        size=10,
+                        color=self._neutral_marker,
+                    ),
+                    name="Straßen Ankerbaum",
+                    legendgroup="road-marker",
+                    legendrank=30,
+                    hoverinfo="skip",
+                    showlegend=True,
+                    meta="legend-only",
+                )
+            )
 
         # ----------------------------------------------------------
         # 4. Layout and axes styling
