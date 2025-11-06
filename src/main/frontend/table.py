@@ -153,8 +153,9 @@ class Table:
         self.grid = w.VBox(
             children=self.build_table(data),
             layout=w.Layout(
-                width=f"{width}px",
-                min_width=f"{width}px",
+                width="100%",
+                min_width="0",
+                max_width=f"{width}px",
                 border="2px solid #94b48a",
                 gap="1px",
             )
@@ -193,6 +194,7 @@ class Table:
             [self._title_widget, self._scroll, _TABLE_CSS],
             layout=w.Layout(
                 width="100%",
+                max_width=f"{width}px",
                 overflow="visible",
                 align_items="flex-start",
             )

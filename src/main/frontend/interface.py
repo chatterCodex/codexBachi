@@ -145,8 +145,8 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
     )
 
     # Detail tables (now with titles)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 550, is_visible=False, title="Aktivierte Seiltrassen")
-    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
+    selected_table = Table(_NAMES["table_selected_headers"], [], 1500, is_visible=False, title="Aktivierte Seiltrassen")
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 1500, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
     selector = ResultSelector(
@@ -170,36 +170,42 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
     sel_widget  = selected_table.getWidget()
     anch_widget = anchor_table.getWidget()
 
-    sel_widget.layout.width = "100%"
-    anch_widget.layout.width = "100%"
+    for widget in (sel_widget, anch_widget):
+        widget.layout.width = "100%"
+        widget.layout.max_width = "1500px"
+        widget.layout.align_self = "stretch"
 
     left_wrap = w.Box(
         [sel_widget],
         layout=w.Layout(
             margin="0",
-            flex="1 1 360px",
+            flex="1 1 600px",
             min_width="0",
+            max_width="100%",
         ),
     )
     right_wrap = w.Box(
         [anch_widget],
         layout=w.Layout(
             margin="0",
-            flex="1 1 360px",
+            flex="1 1 600px",
             min_width="0",
+            max_width="100%",
         ),
     )
     left_wrap.add_class("details-column")
     right_wrap.add_class("details-column")
 
-    details_row = w.HBox(
+    details_row = w.Box(
         [left_wrap, right_wrap],
         layout=w.Layout(
             width="100%",
             align_items="stretch",
             margin="20px 0",
             overflow="visible",
+            display="flex",
             flex_flow="row wrap",
+            justify_content="center",
             gap="20px",
         ),
     )
@@ -214,10 +220,13 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
     map_widget.add_class("is-map")
 
     radar_chart.layout.width = "100%"
+    radar_chart.layout.align_items = "center"
     radar_chart.add_class("section-block")
 
     overview_widget = overview_table.getWidget()
     overview_widget.layout.width = "100%"
+    overview_widget.layout.max_width = "1500px"
+    overview_widget.layout.align_self = "center"
     overview_widget.add_class("section-block")
 
     ui = w.VBox(
@@ -263,8 +272,8 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
     )
 
     # Detail tables (now with titles)
-    selected_table = Table(_NAMES["table_selected_headers"], [], 1000, is_visible=False, title="Aktivierte Seiltrassen")
-    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 450, is_visible=False, title="Endmast Informationen")
+    selected_table = Table(_NAMES["table_selected_headers"], [], 1500, is_visible=False, title="Aktivierte Seiltrassen")
+    anchor_table   = Table(_NAMES["table_anchor_headers"],  [], 1500, is_visible=False, title="Endmast Informationen")
 
     # Result selector → uses vd (instant switching, no recompute)
     selector = ResultSelector(
@@ -288,6 +297,11 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
     sel_widget  = selected_table.getWidget()
     anch_widget = anchor_table.getWidget()
 
+    for widget in (sel_widget, anch_widget):
+        widget.layout.width = "100%"
+        widget.layout.max_width = "1500px"
+        widget.layout.align_self = "stretch"
+
     sel_widget.layout.width = "100%"
     anch_widget.layout.width = "100%"
 
@@ -295,29 +309,33 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
         [sel_widget],
         layout=w.Layout(
             margin="0",
-            flex="1 1 360px",
+            flex="1 1 600px",
             min_width="0",
+            max_width="100%",
         ),
     )
     right_wrap = w.Box(
         [anch_widget],
         layout=w.Layout(
             margin="0",
-            flex="1 1 360px",
+            flex="1 1 600px",
             min_width="0",
+            max_width="100%",
         ),
     )
     left_wrap.add_class("details-column")
     right_wrap.add_class("details-column")
 
-    details_row = w.HBox(
+    details_row = w.Box(
         [left_wrap, right_wrap],
         layout=w.Layout(
             width="100%",
             align_items="stretch",
             margin="20px 0",
             overflow="visible",
+            display="flex",
             flex_flow="row wrap",
+            justify_content="center",
             gap="20px",
         ),
     )
@@ -332,10 +350,13 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
     map_widget.add_class("is-map")
 
     radar_chart.layout.width = "100%"
+    radar_chart.layout.align_items = "center"
     radar_chart.add_class("section-block")
 
     overview_widget = overview_table.getWidget()
     overview_widget.layout.width = "100%"
+    overview_widget.layout.max_width = "1500px"
+    overview_widget.layout.align_self = "center"
     overview_widget.add_class("section-block")
 
     ui = w.VBox(

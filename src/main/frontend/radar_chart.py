@@ -357,6 +357,26 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
             margin="0",
         ))
     
+    big_card.layout.flex = "1 1 320px"
+    big_card.layout.max_width = f"{width}px"
+    big_card.layout.min_width = "280px"
+
+    grid_card.layout.flex = "1 1 320px"
+    grid_card.layout.max_width = f"{width}px"
+    grid_card.layout.min_width = "280px"
+
+    charts = w.Box(
+        [big_card, grid_card],
+        layout=w.Layout(
+            width="100%",
+            display="flex",
+            flex_flow="row wrap",
+            justify_content="center",
+            align_items="flex-start",
+            gap="20px",
+        ),
+    )
+    
     def _apply_sort(kind: str) -> None:
         order = _compute_order(kind, scores, original_order)
 
@@ -416,14 +436,11 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
 
     # wrap everything, include title first
     container = w.VBox(
-        [title_html, big_card, grid_card, _BORDER_RADIUS_CSS, _POINTER_CSS, _DROPDOWN_CSS],
+        [title_html, charts, _BORDER_RADIUS_CSS, _POINTER_CSS, _DROPDOWN_CSS],
         layout=w.Layout(
             width="100%",
-            display="flex",
-            flex_flow="row wrap",
-            align_items="flex-start",        # keep left alignment
-            justify_content="flex-start",
-            gap="20px",
+            align_items="center",
+            gap="12px",
         )
     )
     container.add_class("app-scope")
