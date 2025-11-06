@@ -173,7 +173,7 @@ class Map:
                     tr.visible = True
                     tr.line.color = self._neutral_line
                     tr.line.width = 1.2
-                elif lg in ("tail-marker", "road-marker", "support-marker"):
+                elif lg in ("tail-marker", "road-marker", "support-marker", "endmast-marker"):
                     tr.visible = True
                     tr.marker.color = self._neutral_marker
 
@@ -227,7 +227,7 @@ class Map:
                     tr.line.color = c
                     tr.line.width = 4.5
 
-                elif lg in ("tail-marker", "road-marker"):
+                elif lg in ("tail-marker", "road-marker", "endmast-marker"):
                     tr.visible = True
                     tr.marker.color = c
 
@@ -367,26 +367,26 @@ class Map:
                 if not sup_x:
                     continue
 
-            fig.add_trace(
-                go.Scatter(
-                    x=sup_x,
-                    y=sup_y,
-                    mode="markers",
-                    marker=dict(
-                        symbol="square",
-                        size=8,
-                        color=self._neutral_marker,
-                        line=dict(width=0),
-                    ),
-                    name="Stützbaum",
-                    meta=int(real_idx),
-                    legendgroup="support-marker",
-                    legendrank=20,
-                    hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
-                    showlegend=False,
+                fig.add_trace(
+                    go.Scatter(
+                        x=sup_x,
+                        y=sup_y,
+                        mode="markers",
+                        marker=dict(
+                            symbol="square",
+                            size=8,
+                            color=self._neutral_marker,
+                            line=dict(width=0),
+                        ),
+                        name="Stützbaum",
+                        meta=int(real_idx),
+                        legendgroup="support-marker",
+                        legendrank=20,
+                        hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+                        showlegend=False,
+                    )
                 )
-            )
-            support_present = True
+                support_present = True
 
         if not support_present:
             support_mask = self.data.get("support_tree_mask", None)
@@ -444,6 +444,7 @@ class Map:
         corridors = self.data.get("corridors", {})
         tail_present = False
         road_present = False
+        endmast_present = False
         for real_idx, corr in corridors.items():
             xs = corr.get("xs", [])
             ys = corr.get("ys", [])
@@ -480,57 +481,96 @@ class Map:
             tail = corr.get("tail_anchor", {})
             t_cd = [[tail.get("BHD")]] if tail.get("BHD") is not None else None
 
-            fig.add_trace(
-                go.Scatter(
-                    x=[tail.get("x")],
-                    y=[tail.get("y")],
-                    mode="markers",
-                    marker=dict(
-                        symbol="triangle-down",
-                        size=11,
-                        color=self._neutral_marker,
-                    ),
-                    name="Tal Ankerbaum",
-                    meta=int(real_idx),
-                    legendgroup="tail-marker",
-                    legendrank=10,
-                    hovertemplate=(
-                        "Ankerbaum<br>"
-                        "X: %{x:.2f}<br>"
-                        "Y: %{y:.2f}"
-                        + (
-                            "<br>BHD: %{customdata[0]:.1f} cm"
-                            if t_cd
-                            else ""
-                        )
-                        + "<extra></extra>"
-                    ),
-                    customdata=t_cd,
-                    visible=True,
-                    showlegend=False,
+            if tail.get("x") is not None and tail.get("y") is not None:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[tail.get("x")],
+                        y=[tail.get("y")],
+                        mode="markers",
+                        marker=dict(
+                            symbol="triangle-down",
+                            size=11,
+                            color=self._neutral_marker,
+                        ),
+                        name="Tal Ankerbaum",
+                        meta=int(real_idx),
+                        legendgroup="tail-marker",
+                        legendrank=10,
+                        hovertemplate=(
+                            "Ankerbaum<br>"
+                            "X: %{x:.2f}<br>"
+                            "Y: %{y:.2f}"
+                            + (
+                                "<br>BHD: %{customdata[0]:.1f} cm"
+                                if t_cd
+                                else ""
+                            )
+                            + "<extra></extra>"
+                        ),
+                        customdata=t_cd,
+                        visible=True,
+                        showlegend=False,
+                    )
                 )
-            )
-            tail_present = True
+                tail_present = True
 
             # Connector from corridor end -> tail anchor
-            fig.add_trace(
-                go.Scatter(
-                    x=[corr["end"][0], tail.get("x")],
-                    y=[corr["end"][1], tail.get("y")],
-                    mode="lines",
-                    line=dict(
-                        dash="dot",
-                        width=1.2,
-                        color=self._neutral_line,
-                    ),
-                    name="",
-                    meta=int(real_idx),
-                    legendgroup="tail-conn",
-                    hoverinfo="skip",
-                    visible=True,
-                    showlegend=False,
+            if tail.get("x") is not None and tail.get("y") is not None:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[corr["end"][0], tail.get("x")],
+                        y=[corr["end"][1], tail.get("y")],
+                        mode="lines",
+                        line=dict(
+                            dash="dot",
+                            width=1.2,
+                            color=self._neutral_line,
+                        ),
+                        name="",
+                        meta=int(real_idx),
+                        legendgroup="tail-conn",
+                        hoverinfo="skip",
+                        visible=True,
+                        showlegend=False,
+                    )
                 )
-            )
+
+            # Endmast marker (prefer end support tree location)
+            endmast = corr.get("endmast", {})
+            em_x = endmast.get("x")
+            em_y = endmast.get("y")
+            if em_x is not None and em_y is not None:
+                em_hover = "Endmast<br>X: %{x:.2f}<br>Y: %{y:.2f}"
+                em_custom = []
+                if endmast.get("BHD") is not None:
+                    em_hover += "<br>BHD: %{customdata[0]:.1f} cm"
+                    em_custom.append(float(endmast["BHD"]))
+                if endmast.get("h") is not None:
+                    next_idx = len(em_custom)
+                    em_hover += f"<br>Höhe: %{{customdata[{next_idx}]:.1f}} m"
+                    em_custom.append(float(endmast["h"]))
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=[em_x],
+                        y=[em_y],
+                        mode="markers",
+                        marker=dict(
+                            symbol="diamond",  # distinct mast marker
+                            size=10,
+                            color=self._neutral_marker,
+                        ),
+                        name="Endmast",
+                        meta=int(real_idx),
+                        legendgroup="endmast-marker",
+                        legendrank=15,
+                        hovertemplate=em_hover + "<extra></extra>",
+                        customdata=[em_custom] if em_custom else None,
+                        showlegend=False,
+                        visible=True,
+                    )
+                )
+                endmast_present = True
 
             # Road anchors (possibly multiple), plus dotted connectors from start
             for ra in corr.get("road_anchors", []):
@@ -623,6 +663,26 @@ class Map:
                     name="Straßen Ankerbaum",
                     legendgroup="road-marker",
                     legendrank=30,
+                    hoverinfo="skip",
+                    showlegend=True,
+                    meta="legend-only",
+                )
+            )
+
+        if endmast_present:
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(
+                        symbol="diamond",
+                        size=10,
+                        color=self._neutral_marker,
+                    ),
+                    name="Endmast",
+                    legendgroup="endmast-marker",
+                    legendrank=15,
                     hoverinfo="skip",
                     showlegend=True,
                     meta="legend-only",

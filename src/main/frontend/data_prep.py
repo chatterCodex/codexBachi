@@ -36,6 +36,46 @@ def _safe_float(x, default=0.0) -> float:
         return float(x)
     except Exception:
         return float(default)
+    
+
+def _extract_tree_metadata(tree_obj) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """Return (x, y, BHD, height) for different pandas/dict representations."""
+
+    def _clean(value):
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return None
+        except Exception:
+            pass
+        return _safe_float(value)
+
+    if tree_obj is None:
+        return None, None, None, None
+
+    if isinstance(tree_obj, pd.Series):
+        return (
+            _clean(tree_obj.get("x")) if "x" in tree_obj else None,
+            _clean(tree_obj.get("y")) if "y" in tree_obj else None,
+            _clean(tree_obj.get("BHD")) if "BHD" in tree_obj else None,
+            _clean(tree_obj.get("h")) if "h" in tree_obj else None,
+        )
+
+    if isinstance(tree_obj, pd.DataFrame):
+        if tree_obj.empty:
+            return None, None, None, None
+        return _extract_tree_metadata(tree_obj.iloc[0])
+
+    if isinstance(tree_obj, dict):
+        return (
+            _clean(tree_obj.get("x")) if "x" in tree_obj else None,
+            _clean(tree_obj.get("y")) if "y" in tree_obj else None,
+            _clean(tree_obj.get("BHD")) if "BHD" in tree_obj else None,
+            _clean(tree_obj.get("h")) if "h" in tree_obj else None,
+        )
+
+    return None, None, None, None
 
 
 def _sample_line_xy(line, min_points: int = 20, step: float = 5.0) -> Tuple[List[float], List[float]]:
@@ -600,9 +640,20 @@ class VizData:
             display_id = display_lookup.get(int(real_idx), int(real_idx))
 
             # Tail anchor from END coords, BHD from end_* dict if available
-            end_tree = getattr(row, "end_anchor_tree", None)
-            ex, ey = float(end_tree.loc["x"]), float(end_tree.loc["y"])
-            ebhd = end_tree.loc["BHD"]
+            tail_tree = getattr(row, "end_anchor_tree", None)
+            tail_x, tail_y, tail_bhd, tail_h = _extract_tree_metadata(tail_tree)
+
+            # If metadata is missing fall back to geometric end point
+            if tail_x is None or tail_y is None:
+                tail_x, tail_y = float(end_pt[0]), float(end_pt[1])
+
+            endmast_tree = getattr(row, "end_support_tree", None)
+            if endmast_tree is None:
+                endmast_tree = tail_tree
+
+            endmast_x, endmast_y, endmast_bhd, endmast_h = _extract_tree_metadata(endmast_tree)
+            if endmast_x is None or endmast_y is None:
+                endmast_x, endmast_y = float(end_pt[0]), float(end_pt[1])
 
             # Road anchors: gather ALL anchors available
             road_anchors_list: List[dict] = []
@@ -637,12 +688,25 @@ class VizData:
                     )
                 )
 
+            tail_anchor_info = dict(x=tail_x, y=tail_y)
+            if tail_bhd is not None:
+                tail_anchor_info["BHD"] = tail_bhd
+            if tail_h is not None:
+                tail_anchor_info["h"] = tail_h
+
+            endmast_info = dict(x=endmast_x, y=endmast_y)
+            if endmast_bhd is not None:
+                endmast_info["BHD"] = endmast_bhd
+            if endmast_h is not None:
+                endmast_info["h"] = endmast_h
+
             corridors[int(real_idx)] = dict(
                 xs=xs,
                 ys=ys,
                 start=(float(start_pt[0]), float(start_pt[1])),
                 end=(float(end_pt[0]), float(end_pt[1])),
-                tail_anchor=dict(x=ex, y=ey, BHD=ebhd),
+                tail_anchor=tail_anchor_info,
+                endmast=endmast_info,
                 road_anchors=road_anchors_list,
                 length_m=length_m,
                 volume_m3=volume_m3,
