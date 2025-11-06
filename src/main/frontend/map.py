@@ -84,6 +84,7 @@ class Map:
                 height=f"{fixed_h}px",
                 min_width=f"{fixed_w}px",
                 max_height=f"{fixed_h}px",
+                flex="0 0 auto",
             ),
         )
         self.fig_card.add_class("border-radius")
@@ -91,10 +92,11 @@ class Map:
         self._scroll_wrapper = w.Box(
             [self.fig_card],
             layout=w.Layout(
-                overflow_x="auto",
+                overflow_x="scroll",
                 overflow_y="hidden",
                 width="100%",
-                max_width="100%"
+                max_width="100%",
+                min_width="0",
             )
         )
 
@@ -311,6 +313,7 @@ class Map:
                     color=default_tree_color,
                 ),
                 name="Bäume",
+                legendrank=0,
                 customdata=tree_custom,
                 hovertemplate=(
                     "X: %{x:.2f}<br>"
@@ -351,6 +354,7 @@ class Map:
                 name="Stützbäume",
                 meta=int(real_idx),
                 legendgroup="support-marker",
+                legendrank=20,
                 hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
                 showlegend=not support_legend_added,
             )
@@ -378,6 +382,7 @@ class Map:
                     ),
                     name="Stützbäume",
                     legendgroup="support-marker",
+                    legendrank=20,
                     hovertemplate="Stützmast<br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
                     showlegend=True if sup_x else False,
                 )
@@ -410,6 +415,7 @@ class Map:
                     name=f"{int(display_id)}",
                     meta=int(real_idx),
                     legendgroup="line",
+                    legendrank=50,
                     customdata=cd,
                     hovertemplate=(
                         "Seiltrasse: %{customdata[0]}<br>"
@@ -434,9 +440,10 @@ class Map:
                         size=11,
                         color=self._neutral_marker,
                     ),
-                    name="Tail Anchor",
+                    name="Tal Ankerbaum",
                     meta=int(real_idx),
                     legendgroup="tail-marker",
+                    legendrank=10,
                     hovertemplate=(
                         "Ankerbaum<br>"
                         "X: %{x:.2f}<br>"
@@ -490,9 +497,10 @@ class Map:
                             size=10,
                             color=self._neutral_marker,
                         ),
-                        name="Road Anchor",
+                        name="Straßen Ankerbaum",
                         meta=int(real_idx),
                         legendgroup="road-marker",
+                        legendrank=30,
                         hovertemplate=(
                             "Ankerbaum<br>"
                             "X: %{x:.2f}<br>"
