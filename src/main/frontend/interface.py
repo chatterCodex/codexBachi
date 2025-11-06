@@ -10,6 +10,80 @@ from src.main.frontend.table import Table
 # NEW: pull the single-entry factory that precomputes everything
 from src.main.frontend.data_prep import build_viz_data
 
+_APP_STYLE_HTML = """
+<style>
+  .app-shell {
+    width: min(100%, 1320px);
+    margin: 0 auto;
+    padding: 16px 20px 32px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .app-shell .section-block {
+    width: 100%;
+  }
+
+  .app-shell .section-block.is-map {
+    justify-content: center;
+  }
+
+  .app-shell .toolbar {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .app-shell .toolbar .widget-box,
+  .app-shell .toolbar .widget-hbox,
+  .app-shell .toolbar .widget-vbox {
+    width: min(100%, 520px);
+  }
+
+  .app-shell .details-row {
+    display: flex;
+    width: 100%;
+    gap: 20px;
+    align-items: stretch;
+  }
+
+  .app-shell .details-column {
+    flex: 1 1 360px;
+    min-width: 0;
+    display: flex;
+  }
+
+  .app-shell .details-column > .widget-box,
+  .app-shell .details-column > .widget-vbox {
+    width: 100%;
+  }
+
+  @media (max-width: 1200px) {
+    .app-shell {
+      padding: 12px 16px 28px;
+    }
+
+    .app-shell .toolbar {
+      justify-content: center;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .app-shell .details-row {
+      flex-direction: column;
+    }
+
+    .app-shell .details-column {
+      flex-basis: auto;
+    }
+  }
+</style>
+"""
+
+
 _NAMES = {
     "axes": ["Ergonomische Optimierung", "Ökologische Optimierung", "Kosten Optimierung"],
     "title": "Vergleich der Seiltrassenmodelle",
@@ -46,6 +120,9 @@ _NAMES = {
     ],
 }
 
+def _build_style_widget() -> w.HTML:
+    return w.HTML(_APP_STYLE_HTML, layout=w.Layout(display="none"))
+
 def build_interface_with_viz_data(vd, results_df) -> w.VBox:
     map_component = Map(vd.map, "Seiltrassen Karte")
 
@@ -79,40 +156,85 @@ def build_interface_with_viz_data(vd, results_df) -> w.VBox:
         ),
     )
 
+    selector_widget = selector.get_widget()
+    selector_widget.layout.width = "100%"
+
     toolbar = w.HBox(
-        [selector.get_widget()],
+        [selector_widget],
         layout=w.Layout(width="100%", max_width="1500px", align_items="center", margin="5px 0"),
     )
+
+    toolbar.add_class("toolbar")
+    toolbar.layout.justify_content = "flex-end"
 
     sel_widget  = selected_table.getWidget()
     anch_widget = anchor_table.getWidget()
 
-    left_wrap  = w.Box([sel_widget],  layout=w.Layout(margin="0 10px 0 0", flex="1 1 auto"))
-    right_wrap = w.Box([anch_widget], layout=w.Layout(margin="0 0 0 10px", flex="1 1 auto"))
+    sel_widget.layout.width = "100%"
+    anch_widget.layout.width = "100%"
+
+    left_wrap = w.Box(
+        [sel_widget],
+        layout=w.Layout(
+            margin="0",
+            flex="1 1 360px",
+            min_width="0",
+        ),
+    )
+    right_wrap = w.Box(
+        [anch_widget],
+        layout=w.Layout(
+            margin="0",
+            flex="1 1 360px",
+            min_width="0",
+        ),
+    )
+    left_wrap.add_class("details-column")
+    right_wrap.add_class("details-column")
 
     details_row = w.HBox(
         [left_wrap, right_wrap],
         layout=w.Layout(
             width="100%",
-            align_items="flex-start",
+            align_items="stretch",
             margin="20px 0",
-            overflow="auto",
+            overflow="visible",
+            flex_flow="row wrap",
+            gap="20px",
         ),
     )
 
+    details_row.add_class("details-row")
+    details_row.add_class("section-block")
+
+    map_widget = map_component.get_map_widget()
+    map_widget.layout.width = "100%"
+    map_widget.layout.justify_content = "center"
+    map_widget.add_class("section-block")
+    map_widget.add_class("is-map")
+
+    radar_chart.layout.width = "100%"
+    radar_chart.add_class("section-block")
+
+    overview_widget = overview_table.getWidget()
+    overview_widget.layout.width = "100%"
+    overview_widget.add_class("section-block")
+
     ui = w.VBox(
         [
-            map_component.get_map_widget(),
+            map_widget,
             toolbar,
             radar_chart,
-            overview_table.getWidget(),
+            overview_widget,
             details_row,
         ],
-        layout=w.Layout(align_items="center", gap="16px", width="100%", padding="16px 20px"),
+        layout=w.Layout(width="100%", align_items="stretch", gap="20px"),
     )
 
-    return ui
+    ui.add_class("app-shell")
 
+    style_widget = _build_style_widget()
+    return w.VBox([style_widget, ui], layout=w.Layout(width="100%"))
 
 
 def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VBox:
@@ -152,39 +274,84 @@ def build_interface(forest_area_3, model_list, results_df: pd.DataFrame) -> w.VB
         ),
     )
 
+    selector_widget = selector.get_widget()
+    selector_widget.layout.width = "100%"
+
     toolbar = w.HBox(
-        [selector.get_widget()],
+        [selector_widget],
         layout=w.Layout(width="100%", max_width="1500px", align_items="center", margin="5px 0"),
     )
+
+    toolbar.add_class("toolbar")
+    toolbar.layout.justify_content = "flex-end"
 
     sel_widget  = selected_table.getWidget()
     anch_widget = anchor_table.getWidget()
 
-    left_wrap  = w.Box([sel_widget],  layout=w.Layout(margin="0 10px 0 0", flex="1 1 auto"))
-    right_wrap = w.Box([anch_widget], layout=w.Layout(margin="0 0 0 10px", flex="1 1 auto"))
+    sel_widget.layout.width = "100%"
+    anch_widget.layout.width = "100%"
+
+    left_wrap = w.Box(
+        [sel_widget],
+        layout=w.Layout(
+            margin="0",
+            flex="1 1 360px",
+            min_width="0",
+        ),
+    )
+    right_wrap = w.Box(
+        [anch_widget],
+        layout=w.Layout(
+            margin="0",
+            flex="1 1 360px",
+            min_width="0",
+        ),
+    )
+    left_wrap.add_class("details-column")
+    right_wrap.add_class("details-column")
 
     details_row = w.HBox(
         [left_wrap, right_wrap],
         layout=w.Layout(
             width="100%",
-            align_items="flex-start",
+            align_items="stretch",
             margin="20px 0",
-            overflow="auto",
+            overflow="visible",
+            flex_flow="row wrap",
+            gap="20px",
         ),
     )
 
+    details_row.add_class("details-row")
+    details_row.add_class("section-block")
+
+    map_widget = map_component.get_map_widget()
+    map_widget.layout.width = "100%"
+    map_widget.layout.justify_content = "center"
+    map_widget.add_class("section-block")
+    map_widget.add_class("is-map")
+
+    radar_chart.layout.width = "100%"
+    radar_chart.add_class("section-block")
+
+    overview_widget = overview_table.getWidget()
+    overview_widget.layout.width = "100%"
+    overview_widget.add_class("section-block")
+
     ui = w.VBox(
         [
-            map_component.get_map_widget(),
+            map_widget,
             toolbar,
             radar_chart,
-            overview_table.getWidget(),
+            overview_widget,
             details_row,
         ],
-        layout=w.Layout(align_items="center", gap="16px", width="100%", padding="16px 20px"),
+        layout=w.Layout(width="100%", align_items="stretch", gap="20px"),
     )
+    ui.add_class("app-shell")
 
-    return ui
+    style_widget = _build_style_widget()
+    return w.VBox([style_widget, ui], layout=w.Layout(width="100%"))
 
 
 def _on_select_with_vd(

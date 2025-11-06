@@ -172,7 +172,7 @@ def _build_big_radar(scores: pd.DataFrame, active_indices: List[int], height: in
         [fig],
         layout=w.Layout(
             width=f"{width}px", height=f"{height}px",
-            margin="20px 14px 20px",
+            margin="0",
             border=f"2px solid {_THEME['card_border']}",
             overflow="hidden",
         ))
@@ -350,11 +350,11 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
 
     # holding the sort bar + mini grid
     grid_card = w.VBox(
-        [sort_bar, grid], 
+        [sort_bar, grid],
         layout=w.Layout(
             height=f"{height}px",
             width=f"{width}px",
-            margin="20px 14px 20px",
+            margin="0",
         ))
     
     def _apply_sort(kind: str) -> None:
@@ -422,7 +422,8 @@ def build_radar_dashboard(scores: pd.DataFrame, height: int, width: int, names: 
             display="flex",
             flex_flow="row wrap",
             align_items="flex-start",        # keep left alignment
-            justify_content="center",
+            justify_content="flex-start",
+            gap="20px",
         )
     )
     container.add_class("app-scope")
